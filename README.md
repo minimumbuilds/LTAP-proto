@@ -5,6 +5,10 @@
 
 ## 1. Introduction
 
+Language models cannot meaningfully abstain: every inference call produces tokens, and discarding output is not equivalent to silence — it creates hidden state divergence between agents that share a context. The conventional mitigation, routing turns through a coordinating LLM, trades one problem for another: the coordinator is itself a generative agent, one with inference cost and the potential for its own turn-allocation agenda.
+
+LTAP removes the coordinator. Turn allocation is programmatic, driven entirely by bids the channel participants themselves declare. A non-generative Arbiter resolves contention and maintains a shared append-only log that all participants read from equally. Who speaks next is a function of participant priority signals — not another model's inference.
+
 This document specifies a **tick-based contention protocol** for arbitrating transmission rights among a set of LLM participants sharing a common communication bus. Each tick executes in two logical phases: a **bid phase** (Phases 1–4), in which all participants declare intent and the Arbiter selects a winner without producing any output, and an **execution phase** (Phases 5–6), in which the winner transmits and the result is broadcast. The protocol prevents concurrent transmission and response flooding without imposing any constraint on participant role, domain, or output content.
 
 The protocol is intentionally analogous in scope to a media-access control layer. Participant identity, purpose, output semantics, and internal context management are out of scope. The protocol defines only: how participants declare transmission intent, how that contention is resolved, and how the result is broadcast to all bus members.
@@ -12,6 +16,8 @@ The protocol is intentionally analogous in scope to a media-access control layer
 **Arbiter separation is a foundational requirement of this protocol.** A participant that evaluates bids has a direct incentive to manipulate contention in its own favour. Bid evaluation must therefore be performed by a neutral process that is architecturally separate from the participant set, holds no generative role, and submits no bids of its own. This process is called the Arbiter. All phases of the tick loop are owned and executed exclusively by the Arbiter.
 
 **Cooperative assumption.** LTAP assumes participants report priority honestly. The protocol provides no mechanism to detect or penalise a participant that always bids 1.0. Deployments involving adversarial or incentive-aware participants must implement application-layer mechanisms — reputation scoring, transmission budgets, quotas, or similar — outside the scope of this specification.
+
+**Consistency model.** LTAP provides per-channel sequential consistency: within a channel, all state transitions are serialized through the Arbiter's tick cycle, and only protocol-compliant messages contribute to the channel log. Any out-of-schema or extraneous token generation — even if discarded locally — MUST be treated as a protocol violation, as it creates risk of hidden state divergence between participants. This is the foundational justification for strict output control at bid-generation time (§4.2) and explains why post-generation filtering does not satisfy the constrained decoding requirement.
 
 ---
 
@@ -33,6 +39,7 @@ The protocol is intentionally analogous in scope to a media-access control layer
 | `Bus Event` | A structured message broadcast by the Arbiter to participants after each tick, carrying a transmission or an infrastructure notification, scoped to the channel on which the event occurred. |
 | `Cooldown` | A per-participant, per-channel backoff counter, maintained by the Arbiter, that suppresses bid priority for a fixed number of ticks after a participant transmits on that channel. |
 | `Direct address` | A transmission explicitly directed at a named participant. Triggers a strong priority bias for that participant on every subsequent tick of the same channel until another `ParticipantTransmission` on that channel supersedes it as the most recent log entry. |
+| `Equivalent Mechanism` | A generation-time constraint mechanism that satisfies the constrained decoding requirement (§4.2). An equivalent mechanism MUST guarantee: (1) zero emission of out-of-schema tokens; (2) bounded output strictly conforming to the Bid Schema (§3.3.1); and (3) no transient generation of discardable content — the model must not internally generate and then discard out-of-schema tokens, as this risks hidden state divergence even when only conforming output is emitted. Post-generation filtering or validation does not qualify. |
 
 ---
 
@@ -78,6 +85,8 @@ Bid {
 The `participant` field is absent from the Bid response payload. The Arbiter derives participant identity from the BidRequest context; it is not the participant's responsibility to self-identify in the payload.
 
 `IntentTag` is a closed enumeration specified by the deployment. The base protocol defines one reserved value: `"pass"` (explicit abstention, equivalent to `want_to_send: false`). All other values are advisory metadata with no effect on contention arithmetic.
+
+> **Bid fields are a control plane, not a data plane.** Bid fields — including `intent` — MUST NOT be used to encode arbitrary payloads, hidden data, or context between participants. Implementations MUST ensure bids remain non-expressive and strictly bounded to their protocol-defined semantics (see §7, Invariant 14).
 
 `addressed_to` is absent from the Bid. Who a participant intends to address is a transmission-time decision with no bearing on contention evaluation; it is declared in the TransmissionResponse (§3.4).
 
@@ -245,7 +254,9 @@ The Arbiter collects bids from every **eligible** participant in parallel and wa
 
 How each participant generates its bid is outside the protocol's scope, except as specified below.
 
-**Constrained generation requirement.** A conforming participant MUST invoke its underlying language model using the Bid Schema (§3.3.1) as a hard structural constraint — that is, via constrained decoding or an equivalent mechanism that guarantees the model's output is valid against the schema before the Arbiter receives it. Post-generation validation does not satisfy this requirement. When the Arbiter has published a deployment-specific extended schema (§3.3.1), participants SHOULD use that schema in place of the base Bid Schema.
+**Constrained generation requirement.** A conforming participant MUST invoke its underlying language model using the Bid Schema (§3.3.1) as a hard structural constraint — that is, via constrained decoding or a functionally equivalent generation-time constraint mechanism (see §2) that guarantees the model's output is valid against the schema before the Arbiter receives it. Post-generation validation does not satisfy this requirement. When the Arbiter has published a deployment-specific extended schema (§3.3.1), participants SHOULD use that schema in place of the base Bid Schema.
+
+This requirement exists to: (1) prevent covert or unintended data transmission via bid fields, including `intent`; (2) eliminate discarded-token divergence — a model that internally generates and then discards out-of-schema tokens may produce hidden state that diverges across participants, even when only conforming output is emitted; and (3) minimize unnecessary token generation and its associated cost and latency.
 
 **Effect on failure handling.** A structurally conforming participant cannot produce a bid that fails JSON parsing or violates the `want_to_send` boolean or `priority` numeric-range constraints. The corresponding substitution paths in the table below therefore function as Arbiter-side defense-in-depth against non-conforming participants and are not expected to fire for compliant ones. The timeout path remains unconditional.
 
@@ -479,6 +490,7 @@ Conforming implementations must preserve all of the following. Violation of any 
 11. **Ineligible participants are not solicited.** A participant with `ineligible_ticks > 0` on a channel receives no BidRequest for that channel and cannot win a tick on that channel until ineligibility expires.
 12. **Channel independence.** A participant's arbitration state (ineligible_ticks, failure_streak, last_acted_tick) on one channel has no effect on its state on any other channel. The Arbiter must not use a participant's status or history on channel A when making arbitration decisions on channel B.
 13. **Bid generation uses constrained decoding.** A conforming participant must produce bid responses via constrained decoding (or equivalent) against the Bid Schema (§3.3.1). The Arbiter retains its validation and substitution logic as defense-in-depth but must not rely on it as the primary correctness mechanism for structural bid validity.
+14. **Bid non-expressiveness.** Bid fields — including `intent` — MUST NOT be used to encode arbitrary payloads, hidden data, or inter-participant context leakage. Implementations MUST ensure bids remain non-expressive and bounded to their protocol-defined semantics. Bids are a control plane, not a data plane.
 
 ---
 
