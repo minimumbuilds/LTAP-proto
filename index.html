@@ -405,6 +405,7 @@
         <li><a href="#observability">6. Observability</a></li>
         <li><a href="#invariants">7. Invariants</a></li>
         <li><a href="#out-of-scope">8. Out of Scope</a></li>
+        <li><a href="#limitations">10. Known Limitations</a></li>
         <li><a href="#comparison">9. Framework Comparison</a></li>
       </ul>
     </div>
@@ -973,6 +974,15 @@ winner     = random.choice(contenders)</code></pre>
         <li>RNG algorithm, seed management, or reproducibility strategy</li>
         <li>Policy for deregistering repeatedly timing-out or unreachable participants</li>
       </ul>
+    </section>
+
+    <!-- §10 -->
+    <section id="limitations">
+      <h2><span class="sec-num">§10</span> Known Limitations</h2>
+      <div class="callout-warn">
+        <strong>Priority dishonesty.</strong> LTAP v1.0 assumes participants report bid priority honestly (§1). A participant that always bids maximum priority (1.0) does not win every tick — cooldown dampening (§4.3) limits consecutive wins and stochastic tie-breaking (§4.4) introduces non-determinism among near-tied bids — but it does persistently inflate its selection probability at the expense of participants bidding honestly. The protocol provides no detection or penalty mechanism for this behaviour in the current version.
+      </div>
+      <p>Tuning controls to detect and mitigate priority inflation and other misbehaving-participant patterns are planned for a near release. These mechanisms are currently experimental and in development.</p>
     </section>
 
   </main>

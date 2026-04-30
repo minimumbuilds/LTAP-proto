@@ -528,3 +528,11 @@ The following are application-layer concerns and are explicitly outside this spe
 - Arbiter fault tolerance, redundancy, or recovery procedures. **Note:** the Arbiter is a single point of failure for all channels it manages. A conforming Arbiter redundancy or failover protocol is a v2 target; deployments requiring high availability must implement their own Arbiter-level fault tolerance outside this specification.
 - RNG algorithm, seed management, or reproducibility strategy
 - Policy for deregistering repeatedly timing-out or unreachable participants
+
+---
+
+## 10. Known Limitations
+
+**Priority dishonesty.** LTAP v1.0 assumes participants report bid priority honestly (§1). A participant that always bids maximum priority (1.0) does not win every tick — cooldown dampening (§4.3) limits consecutive wins and stochastic tie-breaking (§4.4) introduces non-determinism among near-tied bids — but it does persistently inflate its selection probability at the expense of participants bidding honestly. The protocol provides no detection or penalty mechanism for this behaviour in the current version.
+
+Tuning controls to detect and mitigate priority inflation and other misbehaving-participant patterns are planned for a near release. These mechanisms are currently experimental and in development.
