@@ -4,79 +4,187 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LTAP — LLM Shared-Bus Turn Allocation Protocol</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>(function(){var t=localStorage.getItem('ltap-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})()</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      --bg:          #0f1117;
-      --surface:     #181c27;
-      --border:      #2a2f3f;
-      --accent:      #4f8ef7;
-      --accent2:     #7c5cbf;
-      --text:        #d4d8e8;
-      --text-dim:    #7a8099;
-      --code-bg:     #111520;
-      --table-alt:   #141829;
-      --warn:        #e5a642;
-      --note-bg:     #111a12;
-      --note-border: #2a4a2a;
-      --note-text:   #8ab890;
-      --mono: "JetBrains Mono","Fira Code","Cascadia Code",Consolas,monospace;
-      --sans: "Inter","Segoe UI",system-ui,sans-serif;
+    html:not([data-theme=dark]) {
+      --bg:            #ffffff;
+      --surface:       #f9fafb;
+      --border:        #e4e7ec;
+      --text:          #181818;
+      --text-dim:      #667085;
+      --heading:       #101828;
+      --accent:        #e2401b;
+      --accent2:       #f04e37;
+      --nav-bg:        #ffffff;
+      --nav-border:    #f2f4f7;
+      --nav-item:      #667085;
+      --nav-head:      #292929;
+      --nav-active-bg: rgba(68,76,231,.08);
+      --nav-active:    #444ce7;
+      --code-bg:       #f9fafb;
+      --code-border:   #e4e7ec;
+      --code-color:    #b91c1c;
+      --pre-bg:        #f9fafb;
+      --pre-border:    #e4e7ec;
+      --pre-color:     #374151;
+      --table-alt:     #f9fafb;
+      --th-bg:         #f3f4f6;
+      --note-bg:       rgba(69,173,232,.10);
+      --note-border:   #45ade8;
+      --note-text:     #0369a1;
+      --warn-bg:       rgba(217,119,6,.10);
+      --warn-border:   #d97706;
+      --warn-text:     #7c2d12;
+      --coop-bg:       rgba(56,161,105,.10);
+      --coop-border:   #38a169;
+      --coop-text:     #14532d;
+      --princ-bg:      rgba(226,64,27,.06);
+      --princ-border:  #e2401b;
+      --princ-text:    #7f1d1d;
+      --inv-bg:        rgba(226,64,27,.04);
+      --toggle-bg:     #f3f4f6;
+      --toggle-fg:     #667085;
+      --mono: "IBM Plex Mono", "JetBrains Mono", Consolas, monospace;
+      --sans: "Inter", "Segoe UI", system-ui, sans-serif;
     }
 
-    html { scroll-behavior: smooth; }
-    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.7; }
+    html[data-theme=dark] {
+      --bg:            #101828;
+      --surface:       #19253d;
+      --border:        #1e2d42;
+      --text:          #e5e7eb;
+      --text-dim:      #9ca3af;
+      --heading:       #f9fafb;
+      --accent:        #f87171;
+      --accent2:       #fb923c;
+      --nav-bg:        #101828;
+      --nav-border:    #1e2d42;
+      --nav-item:      #9ca3af;
+      --nav-head:      #f9fafb;
+      --nav-active-bg: rgba(68,76,231,.18);
+      --nav-active:    #818cf8;
+      --code-bg:       #1e293b;
+      --code-border:   #334155;
+      --code-color:    #fca5a5;
+      --pre-bg:        #0f172a;
+      --pre-border:    #1e293b;
+      --pre-color:     #94a3b8;
+      --table-alt:     #19253d;
+      --th-bg:         #1e2d42;
+      --note-bg:       rgba(69,173,232,.12);
+      --note-border:   #45ade8;
+      --note-text:     #7dd3fc;
+      --warn-bg:       rgba(217,119,6,.12);
+      --warn-border:   #fbbf24;
+      --warn-text:     #fde68a;
+      --coop-bg:       rgba(56,161,105,.12);
+      --coop-border:   #34d399;
+      --coop-text:     #6ee7b7;
+      --princ-bg:      rgba(248,113,113,.08);
+      --princ-border:  #f87171;
+      --princ-text:    #fca5a5;
+      --inv-bg:        rgba(248,113,113,.05);
+      --toggle-bg:     #1e2d42;
+      --toggle-fg:     #9ca3af;
+      --mono: "IBM Plex Mono", "JetBrains Mono", Consolas, monospace;
+      --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+    }
+
+    html { font-size: 18px; scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: var(--sans);
+      font-size: calc(17.5/18*1rem);
+      line-height: 1.7;
+      transition: background .2s, color .2s;
+    }
 
     /* ── Layout ── */
     .layout { display: flex; min-height: 100vh; }
 
     nav {
-      width: 256px; flex-shrink: 0; position: sticky; top: 0; height: 100vh;
-      overflow-y: auto; background: var(--surface); border-right: 1px solid var(--border);
-      padding: 2rem 1.25rem;
+      width: 264px; flex-shrink: 0; position: sticky; top: 0; height: 100vh;
+      background: var(--nav-bg); border-right: 1px solid var(--nav-border);
+      display: flex; flex-direction: column;
+      transition: background .2s, border-color .2s;
     }
-    nav .logo {
-      font-family: var(--mono); font-size: 11px; color: var(--accent);
-      letter-spacing: .12em; text-transform: uppercase;
-      margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+
+    .nav-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.1rem 1.25rem 1rem;
+      border-bottom: 1px solid var(--nav-border);
+      flex-shrink: 0;
     }
+    .logo {
+      font-family: var(--mono); font-size: calc(11/18*1rem);
+      color: var(--accent); letter-spacing: .12em; text-transform: uppercase;
+    }
+
+    .theme-toggle {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--toggle-bg); border: 1px solid var(--border);
+      border-radius: 20px; padding: 3px 10px; cursor: pointer;
+      color: var(--toggle-fg); font-size: calc(12/18*1rem);
+      font-family: var(--sans); line-height: 1.4;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .theme-toggle:hover { background: var(--nav-active-bg); color: var(--nav-active); border-color: var(--nav-active); }
+
+    .nav-links { flex: 1; overflow-y: auto; padding: .75rem 1rem 2rem; }
     nav ul { list-style: none; }
-    nav li { margin: .15rem 0; }
+    nav li { margin: .08rem 0; }
     nav a {
-      display: block; color: var(--text-dim); text-decoration: none;
-      font-size: 12.5px; padding: .3rem .5rem; border-radius: 4px;
-      transition: background .15s, color .15s;
+      display: block; color: var(--nav-item); text-decoration: none;
+      font-size: calc(15.5/18*1rem); padding: .3rem .65rem; border-radius: 5px;
+      transition: background .12s, color .12s;
     }
-    nav a:hover { background: var(--border); color: var(--text); }
+    nav a:hover { background: var(--nav-active-bg); color: var(--nav-active); }
     nav .nav-section {
-      font-size: 10px; font-family: var(--mono); letter-spacing: .1em;
-      text-transform: uppercase; color: var(--accent2); margin: 1.2rem 0 .4rem .5rem;
+      display: block; font-size: calc(11/18*1rem); font-family: var(--mono);
+      letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+      color: var(--nav-head); margin: 1.1rem 0 .25rem .65rem;
     }
-    nav .nav-sub { padding-left: 1rem; }
+    nav .nav-sub a { padding-left: 1.4rem; }
 
     main { flex: 1; max-width: 900px; padding: 3.5rem 3rem 6rem; min-width: 0; }
 
     /* ── Header ── */
     .doc-header { border-bottom: 1px solid var(--border); padding-bottom: 2rem; margin-bottom: 3rem; }
     .doc-header .label {
-      font-family: var(--mono); font-size: 11px; letter-spacing: .15em;
+      font-family: var(--mono); font-size: calc(11/18*1rem); letter-spacing: .15em;
       text-transform: uppercase; color: var(--accent); margin-bottom: .75rem;
     }
-    .doc-header h1 { font-size: 2rem; font-weight: 700; color: #fff; line-height: 1.2; margin-bottom: .5rem; }
-    .doc-header .subtitle { font-size: 14px; color: var(--text-dim); font-style: italic; }
+    .doc-header h1 {
+      font-size: calc(36/18*1rem); font-weight: 700; color: var(--heading);
+      line-height: 1.2; margin-bottom: .5rem;
+    }
+    .doc-header .subtitle { font-size: calc(14/18*1rem); color: var(--text-dim); font-style: italic; }
 
     section { margin-bottom: 3rem; }
 
     h2 {
-      font-size: 1.25rem; font-weight: 600; color: #fff;
+      font-size: calc(28/18*1rem); font-weight: 600; color: var(--heading);
       margin-bottom: 1rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border);
       display: flex; align-items: baseline; gap: .6rem;
     }
-    h2 .sec-num { font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 400; letter-spacing: .05em; }
+    h2 .sec-num {
+      font-family: var(--mono); font-size: calc(11/18*1rem);
+      color: var(--accent); font-weight: 400; letter-spacing: .05em;
+    }
 
-    h3 { font-size: 1rem; font-weight: 600; color: var(--text); margin: 1.75rem 0 .6rem; }
-    h3 .sec-num { font-family: var(--mono); font-size: 11px; color: var(--accent2); font-weight: 400; margin-right: .4rem; }
+    h3 {
+      font-size: calc(20/18*1rem); font-weight: 600; color: var(--heading);
+      margin: 1.75rem 0 .6rem;
+    }
+    h3 .sec-num {
+      font-family: var(--mono); font-size: calc(11/18*1rem);
+      color: var(--accent2); font-weight: 400; margin-right: .4rem;
+    }
 
     p { margin-bottom: .9rem; }
     ol, ul { margin: .5rem 0 .9rem 1.5rem; }
@@ -84,129 +192,172 @@
 
     /* ── Code ── */
     pre {
-      background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
-      padding: 1.25rem 1.5rem; overflow-x: auto; font-family: var(--mono);
-      font-size: 12.5px; line-height: 1.65; margin: 1rem 0 1.25rem; color: #c8cfe8;
+      background: var(--pre-bg); border: 1px solid var(--pre-border);
+      border-radius: 8px; padding: 1.25rem 1.5rem; overflow-x: auto;
+      font-family: var(--mono); font-size: calc(15.5/18*1rem);
+      line-height: 1.65; margin: 1rem 0 1.25rem; color: var(--pre-color);
+      transition: background .2s, border-color .2s, color .2s;
     }
     code {
-      font-family: var(--mono); font-size: 12px; background: var(--code-bg);
-      border: 1px solid var(--border); border-radius: 3px; padding: .1em .4em; color: #a8c4f8;
+      font-family: var(--mono); font-size: calc(14/18*1rem);
+      background: var(--code-bg); border: 1px solid var(--code-border);
+      border-radius: 4px; padding: .1em .4em; color: var(--code-color);
+      transition: background .2s;
     }
     pre code { background: none; border: none; padding: 0; font-size: inherit; color: inherit; }
 
     /* ── Tables ── */
     .table-wrap { overflow-x: auto; margin: 1rem 0 1.25rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    table { width: 100%; border-collapse: collapse; font-size: calc(15/18*1rem); }
     thead th {
       text-align: left; padding: .6rem 1rem; font-family: var(--mono);
-      font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
-      color: var(--accent); background: var(--surface); border-bottom: 1px solid var(--border);
+      font-size: calc(11/18*1rem); letter-spacing: .08em; text-transform: uppercase;
+      color: var(--accent); background: var(--th-bg); border-bottom: 1px solid var(--border);
     }
     tbody td { padding: .55rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
     tbody tr:nth-child(even) td { background: var(--table-alt); }
     tbody tr:last-child td { border-bottom: none; }
-    td code { font-size: 11.5px; }
+    td code { font-size: calc(13/18*1rem); }
 
     /* ── Callouts ── */
     .principle {
-      background: #0e1a2a; border: 1px solid #1e3a5a; border-left: 3px solid var(--accent);
-      border-radius: 4px; padding: .85rem 1.1rem; font-size: 13.5px; color: #a8c8f0; margin: 1rem 0 1.25rem;
+      background: var(--princ-bg); border: 1px solid var(--border);
+      border-left: 5px solid var(--princ-border);
+      border-radius: 10px; padding: .85rem 1.1rem;
+      font-size: calc(15.5/18*1rem); color: var(--princ-text); margin: 1rem 0 1.25rem;
     }
-    .principle strong { color: #7ab8ff; }
+    .principle strong { color: var(--accent); }
 
     .callout-warn {
-      background: #1a1b10; border: 1px solid #3a3510; border-left: 3px solid var(--warn);
-      border-radius: 4px; padding: .75rem 1rem; font-size: 13px; color: #c8b87a; margin: .75rem 0;
+      background: var(--warn-bg); border: 1px solid var(--border);
+      border-left: 5px solid var(--warn-border);
+      border-radius: 10px; padding: .75rem 1rem;
+      font-size: calc(15.5/18*1rem); color: var(--warn-text); margin: .75rem 0;
     }
-    .callout-warn strong { color: var(--warn); }
+    .callout-warn strong { color: var(--warn-border); }
 
     .callout-note {
-      background: var(--note-bg); border: 1px solid var(--note-border);
-      border-left: 3px solid var(--note-text); border-radius: 4px;
-      padding: .75rem 1rem; font-size: 13px; color: var(--note-text); margin: .75rem 0 1rem;
+      background: var(--note-bg); border: 1px solid var(--border);
+      border-left: 5px solid var(--note-border);
+      border-radius: 10px; padding: .75rem 1rem;
+      font-size: calc(15.5/18*1rem); color: var(--note-text); margin: .75rem 0 1rem;
     }
-    .callout-note strong { color: #aad4aa; }
+    .callout-note strong { color: var(--note-border); }
 
     .callout-coop {
-      background: #121a14; border: 1px solid #1e3a22; border-left: 3px solid #5a9a6a;
-      border-radius: 4px; padding: .85rem 1.1rem; font-size: 13.5px; color: #90c8a0; margin: 1rem 0 1.25rem;
+      background: var(--coop-bg); border: 1px solid var(--border);
+      border-left: 5px solid var(--coop-border);
+      border-radius: 10px; padding: .85rem 1.1rem;
+      font-size: calc(15.5/18*1rem); color: var(--coop-text); margin: 1rem 0 1.25rem;
     }
-    .callout-coop strong { color: #7dc898; }
+    .callout-coop strong { color: var(--coop-border); }
 
     /* ── Invariants ── */
     .invariants { list-style: none; counter-reset: inv; margin-left: 0; }
     .invariants li {
       counter-increment: inv; display: flex; gap: 1rem;
-      padding: .75rem 1rem; border-left: 2px solid var(--accent2);
-      background: #15182a; border-radius: 0 4px 4px 0; margin-bottom: .5rem;
-      font-size: 14px; line-height: 1.6;
+      padding: .75rem 1rem; border-left: 5px solid var(--accent2);
+      background: var(--inv-bg); border-radius: 0 10px 10px 0;
+      margin-bottom: .5rem; font-size: calc(15/18*1rem); line-height: 1.6;
+      transition: background .2s;
     }
     .invariants li::before {
-      content: counter(inv); font-family: var(--mono); font-size: 11px;
+      content: counter(inv); font-family: var(--mono); font-size: calc(11/18*1rem);
       color: var(--accent2); flex-shrink: 0; padding-top: .15rem; min-width: 1.2rem;
     }
+    .invariants li > span { flex: 1; min-width: 0; }
 
     /* ── Conformance levels ── */
     .conformance { display: flex; gap: 1rem; margin: 1rem 0 1.25rem; flex-wrap: wrap; }
     .conf-card {
-      flex: 1; min-width: 240px; border: 1px solid var(--border); border-radius: 6px;
-      padding: 1rem 1.25rem; background: var(--surface);
+      flex: 1; min-width: 240px; border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; background: var(--surface);
+      transition: background .2s;
     }
     .conf-card .conf-label {
-      font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
-      text-transform: uppercase; margin-bottom: .4rem;
+      font-family: var(--mono); font-size: calc(10/18*1rem);
+      letter-spacing: .12em; text-transform: uppercase; margin-bottom: .4rem;
     }
     .conf-card.base .conf-label { color: var(--accent); }
     .conf-card.replay .conf-label { color: var(--accent2); }
-    .conf-card p { font-size: 13px; color: var(--text-dim); margin-bottom: 0; }
+    .conf-card p { font-size: calc(14/18*1rem); color: var(--text-dim); margin-bottom: 0; }
 
     .out-of-scope { list-style: none; margin-left: 0; }
     .out-of-scope li {
-      padding: .4rem .75rem; color: var(--text-dim); font-size: 13.5px;
+      padding: .4rem .75rem; color: var(--text-dim);
+      font-size: calc(15/18*1rem);
       border-left: 2px solid var(--border); margin-bottom: .3rem;
     }
-    .out-of-scope li::before { content: "—"; margin-right: .5rem; color: var(--border); }
+    .out-of-scope li::before { content: "—"; margin-right: .5rem; color: var(--text-dim); }
 
     /* ── Phase flow ── */
     .phase-flow { display: flex; flex-direction: column; margin: 1.25rem 0; }
     .phase-section-label {
-      font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
-      text-transform: uppercase; color: var(--text-dim); margin: .5rem 0 .35rem 2.2rem;
+      font-family: var(--mono); font-size: calc(10/18*1rem);
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--text-dim); margin: .5rem 0 .35rem 2.2rem;
     }
     .phase-row { display: flex; align-items: stretch; }
     .phase-connector { width: 32px; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
     .phase-connector .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 18px; }
     .phase-connector .dot.exec { background: var(--accent2); }
-    .phase-connector .dot.boundary { background: #c8a040; }
+    .phase-connector .dot.boundary { background: #B45309; }
     .phase-connector .line { width: 2px; flex: 1; background: var(--border); }
     .phase-connector.last .line { display: none; }
-    .phase-card { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .75rem 1rem; margin-bottom: 6px; }
-    .phase-card .phase-label { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: .15rem; }
-    .phase-card .phase-title { font-size: 13.5px; font-weight: 600; color: #fff; margin-bottom: .2rem; }
-    .phase-card .phase-desc { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+    .phase-card {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: .75rem 1rem; margin-bottom: 6px;
+      transition: background .2s, border-color .2s;
+    }
+    .phase-card .phase-label {
+      font-family: var(--mono); font-size: calc(10/18*1rem);
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: .15rem;
+    }
+    .phase-card .phase-title { font-size: calc(14/18*1rem); font-weight: 600; color: var(--heading); margin-bottom: .2rem; }
+    .phase-card .phase-desc { font-size: calc(13/18*1rem); color: var(--text-dim); line-height: 1.5; }
     .phase-card.parallel { border-color: var(--accent2); }
     .phase-card.parallel .phase-label { color: var(--accent2); }
-    .phase-card.exec { border-color: #3a2f5a; }
+    .phase-card.exec { border-color: var(--accent2); }
     .phase-card.exec .phase-label { color: var(--accent2); }
-    .phase-card.bnd { border-color: #4a3a1a; }
-    .phase-card.bnd .phase-label { color: #c8a040; }
+    .phase-card.bnd { border-color: #B45309; }
+    .phase-card.bnd .phase-label { color: #B45309; }
 
     /* ── Arch diagram ── */
     .arch-diagram {
-      background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
-      padding: 1.5rem 2rem; margin: 1rem 0 1.5rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.5rem 2rem; margin: 1rem 0 1.5rem;
       display: flex; flex-direction: column; align-items: center; gap: .5rem;
+      transition: background .2s;
     }
     .arch-row { display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap; }
     .arch-box {
       border: 1px solid var(--border); border-radius: 6px; padding: .5rem 1rem;
-      font-family: var(--mono); font-size: 12px; text-align: center; min-width: 100px;
+      font-family: var(--mono); font-size: calc(13/18*1rem); text-align: center; min-width: 100px;
     }
-    .arch-box.arbiter { border-color: var(--accent); color: var(--accent); background: #0d1a30; }
-    .arch-box.participant { border-color: var(--accent2); color: var(--accent2); background: #160f2a; }
-    .arch-box.bus { border-color: #4a3a1a; color: #c8a040; background: #1a1408; }
-    .arch-arrow { color: var(--text-dim); font-size: 12px; font-family: var(--mono); text-align: center; }
-    .arch-label { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-top: .5rem; }
+    .arch-box.arbiter { border-color: var(--accent); color: var(--accent); background: var(--princ-bg); }
+    .arch-box.participant { border-color: var(--accent2); color: var(--accent2); background: var(--inv-bg); }
+    .arch-box.bus { border-color: #D97706; color: #B45309; background: rgba(217,119,6,.06); }
+    .arch-arrow { color: var(--text-dim); font-size: calc(12/18*1rem); font-family: var(--mono); text-align: center; }
+    .arch-label { font-size: calc(12/18*1rem); color: var(--text-dim); font-family: var(--mono); margin-top: .5rem; }
+
+    /* ── Animation CTA ── */
+    .animation-cta { margin: 1.75rem 0 2rem; display: flex; justify-content: center; }
+    .animation-cta a {
+      display: inline-flex; align-items: center; gap: .75rem;
+      background: linear-gradient(135deg, rgba(226,64,27,.06), rgba(240,78,55,.04));
+      border: 1px solid var(--accent); border-radius: 8px;
+      padding: .9rem 2rem; color: var(--accent); text-decoration: none;
+      font-family: var(--sans); font-size: calc(15/18*1rem);
+      font-weight: 600; letter-spacing: .02em;
+      transition: background .15s, box-shadow .15s;
+    }
+    .animation-cta a:hover {
+      background: linear-gradient(135deg, rgba(226,64,27,.12), rgba(240,78,55,.08));
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .animation-cta .cta-icon { font-size: calc(18/18*1rem); }
+    .animation-cta .cta-arrow { opacity: .7; }
 
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -218,39 +369,45 @@
 
   <!-- ── Nav ── -->
   <nav>
-    <div class="logo">LTAP v1.0</div>
-    <ul>
-      <li><a href="#intro">1. Introduction</a></li>
-      <li><span class="nav-section">Reference</span></li>
-      <li><a href="#definitions">2. Definitions</a></li>
-      <li><a href="#data-model">3. Data Model</a></li>
-      <li class="nav-sub"><a href="#dm-participant">3.1 Participant</a></li>
-      <li class="nav-sub"><a href="#dm-bidrequest">3.2 BidRequest</a></li>
-      <li class="nav-sub"><a href="#dm-bid">3.3 Bid</a></li>
-      <li class="nav-sub"><a href="#dm-txresponse">3.4 TransmissionResponse</a></li>
-      <li class="nav-sub"><a href="#dm-logentry">3.5 Log Entries</a></li>
-      <li class="nav-sub"><a href="#dm-busevent">3.6 Bus Event</a></li>
-      <li class="nav-sub"><a href="#dm-channel-bus">3.7 Channel &amp; Bus</a></li>
-      <li class="nav-sub"><a href="#dm-arbiter">3.8 Arbiter</a></li>
-      <li class="nav-sub"><a href="#dm-memberlist">3.9 MemberListResponse</a></li>
-      <li><span class="nav-section">Protocol</span></li>
-      <li><a href="#phases">4. Protocol Phases</a></li>
-      <li class="nav-sub"><a href="#phase1">4.1 Decrement Counters</a></li>
-      <li class="nav-sub"><a href="#phase2">4.2 Bid Collection</a></li>
-      <li class="nav-sub"><a href="#phase3">4.3 Bid Weighting</a></li>
-      <li class="nav-sub"><a href="#phase4">4.4 Winner Selection</a></li>
-      <li class="nav-sub"><a href="#phase5">4.5 Signal and Receive</a></li>
-      <li class="nav-sub"><a href="#phase6">4.6 Broadcast Events</a></li>
-      <li><a href="#membership">5. Membership</a></li>
-      <li class="nav-sub"><a href="#mem-registration">5.1 Registration</a></li>
-      <li class="nav-sub"><a href="#mem-deregistration">5.2 Deregistration</a></li>
-      <li class="nav-sub"><a href="#mem-channel-lifecycle">5.3 Channel Lifecycle</a></li>
-      <li class="nav-sub"><a href="#mem-query">5.4 Participant List Query</a></li>
-      <li><span class="nav-section">Guarantees</span></li>
-      <li><a href="#observability">6. Observability</a></li>
-      <li><a href="#invariants">7. Invariants</a></li>
-      <li><a href="#out-of-scope">8. Out of Scope</a></li>
-    </ul>
+    <div class="nav-header">
+      <div class="logo">LTAP v1.0</div>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">&#9790; Dark</button>
+    </div>
+    <div class="nav-links">
+      <ul>
+        <li><a href="#intro">1. Introduction</a></li>
+        <li><span class="nav-section">Reference</span></li>
+        <li><a href="#definitions">2. Definitions</a></li>
+        <li><a href="#data-model">3. Data Model</a></li>
+        <li class="nav-sub"><a href="#dm-participant">3.1 Participant</a></li>
+        <li class="nav-sub"><a href="#dm-bidrequest">3.2 BidRequest</a></li>
+        <li class="nav-sub"><a href="#dm-bid">3.3 Bid</a></li>
+        <li class="nav-sub"><a href="#dm-txresponse">3.4 TransmissionResponse</a></li>
+        <li class="nav-sub"><a href="#dm-logentry">3.5 Log Entries</a></li>
+        <li class="nav-sub"><a href="#dm-busevent">3.6 Bus Event</a></li>
+        <li class="nav-sub"><a href="#dm-channel-bus">3.7 Channel &amp; Bus</a></li>
+        <li class="nav-sub"><a href="#dm-arbiter">3.8 Arbiter</a></li>
+        <li class="nav-sub"><a href="#dm-memberlist">3.9 MemberListResponse</a></li>
+        <li><span class="nav-section">Protocol</span></li>
+        <li><a href="#phases">4. Protocol Phases</a></li>
+        <li class="nav-sub"><a href="#phase1">4.1 Decrement Counters</a></li>
+        <li class="nav-sub"><a href="#phase2">4.2 Bid Collection</a></li>
+        <li class="nav-sub"><a href="#phase3">4.3 Bid Weighting</a></li>
+        <li class="nav-sub"><a href="#phase4">4.4 Winner Selection</a></li>
+        <li class="nav-sub"><a href="#phase5">4.5 Signal and Receive</a></li>
+        <li class="nav-sub"><a href="#phase6">4.6 Broadcast Events</a></li>
+        <li><a href="#membership">5. Membership</a></li>
+        <li class="nav-sub"><a href="#mem-registration">5.1 Registration</a></li>
+        <li class="nav-sub"><a href="#mem-deregistration">5.2 Deregistration</a></li>
+        <li class="nav-sub"><a href="#mem-channel-lifecycle">5.3 Channel Lifecycle</a></li>
+        <li class="nav-sub"><a href="#mem-query">5.4 Participant List Query</a></li>
+        <li><span class="nav-section">Guarantees</span></li>
+        <li><a href="#observability">6. Observability</a></li>
+        <li><a href="#invariants">7. Invariants</a></li>
+        <li><a href="#out-of-scope">8. Out of Scope</a></li>
+        <li><a href="#comparison">9. Framework Comparison</a></li>
+      </ul>
+    </div>
   </nav>
 
   <!-- ── Main ── -->
@@ -289,6 +446,13 @@
           <div class="arch-box bus">Channel N…<br><span style="font-size:10px;opacity:.6">log · participants · tick</span></div>
         </div>
         <div class="arch-label">Each channel is an independent broadcast domain. Participants may join multiple channels; state is not shared across channels.</div>
+      </div>
+      <div class="animation-cta">
+        <a href="ltap-animation.html">
+          <span class="cta-icon">▶</span>
+          Watch the Interactive Protocol Animation
+          <span class="cta-arrow">→</span>
+        </a>
       </div>
     </section>
 
@@ -699,19 +863,63 @@ winner     = random.choice(contenders)</code></pre>
       <h2><span class="sec-num">§7</span> Protocol Invariants</h2>
       <p>Conforming implementations must preserve all of the following.</p>
       <ol class="invariants">
-        <li><strong>Arbiter neutrality.</strong> The Arbiter must not be a participant, submit bids, produce transmissions, or hold participant-influenced arbitration state beyond the protocol records defined here. It must not semantically interpret participant content beyond <code>addressed_to</code>.</li>
-        <li><strong>Participant exclusion from evaluation.</strong> No participant may read, influence, or access any other participant's bid before the tick's winner is announced.</li>
-        <li><strong>Bid isolation.</strong> The Arbiter must not include one participant's bid data, private state, or undelivered bus events in anything it sends to another participant.</li>
-        <li><strong>Bid before execution.</strong> The Arbiter must not signal transmission rights before all bids for the current tick have been collected (or timed out) and evaluated.</li>
-        <li><strong>At most one winner per tick.</strong> If no eligible bids exist, no transmission occurs. If eligible bids exist, exactly one winner is selected and signalled.</li>
-        <li><strong>Serial execution.</strong> The Arbiter solicits bids in parallel but signals transmission rights serially to at most one winner per tick.</li>
-        <li><strong>Direct-address bias applied after dampening.</strong> The bias (§4.3 step 2) is evaluated after cooldown dampening, against the most recent <code>ParticipantTransmission</code> in <code>channel.log</code> only. Self-address is suppressed before this rule applies.</li>
-        <li><strong>Failure and timeout default to silence.</strong> Any bid timeout, validation failure, or transmission failure produces no bus event for that participant on that tick. Ineligibility is not imposed on failure unless <code>failure_streak &gt;= MAX_CONSECUTIVE_FAILURES</code>.</li>
-        <li><strong>Log append precedes broadcast.</strong> The Arbiter appends to <code>channel.log</code> before any broadcast attempt. Delivery failures do not affect the log.</li>
-        <li><strong>Membership changes at tick boundaries.</strong> External requests take effect only between ticks of the relevant channel. Multiple requests at the same boundary are processed in receipt order; removals before registrations.</li>
-        <li><strong>Ineligible participants are not solicited.</strong> A participant with <code>ineligible_ticks &gt; 0</code> on a channel receives no BidRequest for that channel and cannot win a tick on that channel until ineligibility expires.</li>
-        <li><strong>Channel independence.</strong> A participant's arbitration state (cooldown, ineligible_ticks, failure_streak, last_acted_tick) on one channel has no effect on its state on any other channel. The Arbiter must not use a participant's status or history on channel A when making arbitration decisions on channel B.</li>
+        <li><span><strong>Arbiter neutrality.</strong> The Arbiter must not be a participant, submit bids, produce transmissions, or hold participant-influenced arbitration state beyond the protocol records defined here. It must not semantically interpret participant content beyond <code>addressed_to</code>.</span></li>
+        <li><span><strong>Participant exclusion from evaluation.</strong> No participant may read, influence, or access any other participant's bid before the tick's winner is announced.</span></li>
+        <li><span><strong>Bid isolation.</strong> The Arbiter must not include one participant's bid data, private state, or undelivered bus events in anything it sends to another participant.</span></li>
+        <li><span><strong>Bid before execution.</strong> The Arbiter must not signal transmission rights before all bids for the current tick have been collected (or timed out) and evaluated.</span></li>
+        <li><span><strong>At most one winner per tick.</strong> If no eligible bids exist, no transmission occurs. If eligible bids exist, exactly one winner is selected and signalled.</span></li>
+        <li><span><strong>Serial execution.</strong> The Arbiter solicits bids in parallel but signals transmission rights serially to at most one winner per tick.</span></li>
+        <li><span><strong>Direct-address bias.</strong> The bias (§4.3 step 1) is evaluated against the most recent <code>ParticipantTransmission</code> in <code>channel.log</code> only. Self-address is suppressed before this rule applies.</span></li>
+        <li><span><strong>Failure and timeout default to silence.</strong> Any bid timeout, validation failure, or transmission failure produces no bus event for that participant on that tick. Ineligibility is not imposed on failure unless <code>failure_streak &gt;= MAX_CONSECUTIVE_FAILURES</code>.</span></li>
+        <li><span><strong>Log append precedes broadcast.</strong> The Arbiter appends to <code>channel.log</code> before any broadcast attempt. Delivery failures do not affect the log.</span></li>
+        <li><span><strong>Membership changes at tick boundaries.</strong> External requests take effect only between ticks of the relevant channel. Multiple requests at the same boundary are processed in receipt order; removals before registrations.</span></li>
+        <li><span><strong>Ineligible participants are not solicited.</strong> A participant with <code>ineligible_ticks &gt; 0</code> on a channel receives no BidRequest for that channel and cannot win a tick on that channel until ineligibility expires.</span></li>
+        <li><span><strong>Channel independence.</strong> A participant's arbitration state (cooldown, ineligible_ticks, failure_streak, last_acted_tick) on one channel has no effect on its state on any other channel. The Arbiter must not use a participant's status or history on channel A when making arbitration decisions on channel B.</span></li>
       </ol>
+    </section>
+
+    <!-- §9 -->
+    <section id="comparison">
+      <h2><span class="sec-num">§9</span> Framework Comparison</h2>
+      <p>The table below contrasts LTAP's protocol-level mechanisms against the common default patterns in AutoGen, CrewAI, and LangGraph. The right column describes typical configurations; all three frameworks are extensible and can approximate some of these behaviours through custom code.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>LTAP Protocol</th>
+              <th>AutoGen / CrewAI / LangGraph</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Selection Logic</strong></td>
+              <td>Deterministic &amp; stochastic: participants submit numeric priority bids (0.0–1.0); the Arbiter applies a deterministic weighting pipeline then selects uniformly from a near-tie band.</td>
+              <td>LLM-based: a coordinator model reasons in natural language about who should speak next, based on conversation context and role descriptions.</td>
+            </tr>
+            <tr>
+              <td><strong>Speaker Intent</strong></td>
+              <td>Native: each participant explicitly signals <code>want_to_send</code>, <code>priority</code>, and an <code>IntentTag</code> in Phase 2 Bid Collection — a structured, protocol-defined mechanism.</td>
+              <td>Simulated: frameworks lack a dedicated "I want to speak" signal; intent must be embedded in prompts or implemented as custom routing logic.</td>
+            </tr>
+            <tr>
+              <td><strong>Concurrency</strong></td>
+              <td>Strictly serial per channel (Protocol Invariant 6): bids are collected in parallel, but transmission rights are granted to exactly one winner per tick.</td>
+              <td>Variable: default behaviour is serial, but LangGraph supports parallel node execution and AutoGen supports concurrent sub-chats ("swarm" patterns).</td>
+            </tr>
+            <tr>
+              <td><strong>Backoff / Cooldown</strong></td>
+              <td>Automated: <code>ineligible_ticks</code> is set to <code>COOLDOWN_TICKS + 1</code> after a win, preventing a participant from immediately dominating subsequent ticks without any coordinator intervention.</td>
+              <td>Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions.</td>
+            </tr>
+            <tr>
+              <td><strong>Direct Addressing</strong></td>
+              <td>Protocol-level: if the most recent <code>ParticipantTransmission</code> named a participant in <code>addressed_to</code>, that participant receives a hard priority floor of 0.95 in the next weighting pass (§4.3).</td>
+              <td>Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- §8 -->
@@ -739,5 +947,27 @@ winner     = random.choice(contenders)</code></pre>
 
   </main>
 </div>
+<script>
+(function() {
+  var btn = document.getElementById('theme-toggle');
+  function sync() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    btn.innerHTML = dark ? '&#9728; Light' : '&#9790; Dark';
+    btn.setAttribute('aria-pressed', String(dark));
+  }
+  sync();
+  btn.addEventListener('click', function() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (dark) {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('ltap-theme', 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('ltap-theme', 'dark');
+    }
+    sync();
+  });
+})();
+</script>
 </body>
 </html>

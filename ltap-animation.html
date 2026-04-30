@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LTAP Protocol Animation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script>(function(){var t=localStorage.getItem('ltap-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})()</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html:not([data-theme=dark]) {
+    --bg:              #ffffff;
+    --surface:         #f9fafb;
+    --border:          #e4e7ec;
+    --text:            #181818;
+    --text-dim:        #667085;
+    --arb-bg:          rgba(68,76,231,.06);
+    --arb-border:      #444ce7;
+    --arb-name:        #444ce7;
+    --arb-glow:        rgba(68,76,231,.25);
+    --part-bg:         #f9fafb;
+    --part-name:       #16a34a;
+    --active-border:   #16a34a;
+    --active-glow:     rgba(22,163,74,.25);
+    --winner-border:   #d97706;
+    --winner-name:     #d97706;
+    --winner-glow:     rgba(217,119,6,.35);
+    --arrow-bid:       #444ce7;
+    --arrow-resp:      #16a34a;
+    --arrow-signal:    #d97706;
+    --arrow-bcast:     #7c3aed;
+    --pk-bid-bg:       rgba(68,76,231,.07);    --pk-bid-color:   #444ce7;
+    --pk-resp-bg:      rgba(22,163,74,.07);    --pk-resp-color:  #16a34a;
+    --pk-sig-bg:       rgba(217,119,6,.07);    --pk-sig-color:   #d97706;
+    --pk-bcast-bg:     rgba(124,58,237,.07);   --pk-bcast-color: #7c3aed;
+    --log-dim:         #6b7280;
+    --log-ts:          #94a3b8;
+    --log-evt:         #444ce7;
+    --log-ok:          #16a34a;
+    --log-warn:        #d97706;
+    --log-hi:          #7c3aed;
+    --badge-indigo:    #444ce7;
+    --badge-purple:    #7c3aed;
+    --badge-amber:     #d97706;
+    --badge-green:     #16a34a;
+    --btn-bg:          #f3f4f6;
+    --btn-hover:       #e5e7eb;
+    --btn-color:       #374151;
+    --btn-primary:     #444ce7;
+    --btn-primary-hover: #4f46e5;
+    --pill-bg:         rgba(68,76,231,.05);
+    --pill-border:     rgba(68,76,231,.22);
+    --pill-color:      rgba(68,76,231,.7);
+    --track-off:       #d1d5db;
+    --track-on:        #444ce7;
+    --mono: "IBM Plex Mono", "JetBrains Mono", Consolas, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+
+  html[data-theme=dark] {
+    --bg:              #101828;
+    --surface:         #19253d;
+    --border:          #1e2d42;
+    --text:            #e5e7eb;
+    --text-dim:        #9ca3af;
+    --arb-bg:          rgba(129,140,248,.08);
+    --arb-border:      #818cf8;
+    --arb-name:        #818cf8;
+    --arb-glow:        rgba(129,140,248,.3);
+    --part-bg:         #111828;
+    --part-name:       #34d399;
+    --active-border:   #34d399;
+    --active-glow:     rgba(52,211,153,.3);
+    --winner-border:   #fbbf24;
+    --winner-name:     #fbbf24;
+    --winner-glow:     rgba(251,191,36,.4);
+    --arrow-bid:       #818cf8;
+    --arrow-resp:      #34d399;
+    --arrow-signal:    #fbbf24;
+    --arrow-bcast:     #c084fc;
+    --pk-bid-bg:       rgba(129,140,248,.12);   --pk-bid-color:   #818cf8;
+    --pk-resp-bg:      rgba(52,211,153,.12);    --pk-resp-color:  #34d399;
+    --pk-sig-bg:       rgba(251,191,36,.12);    --pk-sig-color:   #fbbf24;
+    --pk-bcast-bg:     rgba(192,132,252,.12);   --pk-bcast-color: #c084fc;
+    --log-dim:         #9ca3af;
+    --log-ts:          #4b5563;
+    --log-evt:         #818cf8;
+    --log-ok:          #34d399;
+    --log-warn:        #fbbf24;
+    --log-hi:          #c084fc;
+    --badge-indigo:    #4f46e5;
+    --badge-purple:    #7c3aed;
+    --badge-amber:     #b45309;
+    --badge-green:     #15803d;
+    --btn-bg:          #19253d;
+    --btn-hover:       #1e2d42;
+    --btn-color:       #e5e7eb;
+    --btn-primary:     #4f46e5;
+    --btn-primary-hover: #4338ca;
+    --pill-bg:         rgba(129,140,248,.08);
+    --pill-border:     rgba(129,140,248,.25);
+    --pill-color:      rgba(129,140,248,.8);
+    --track-off:       #1e2d42;
+    --track-on:        #4f46e5;
+    --mono: "IBM Plex Mono", "JetBrains Mono", Consolas, monospace;
+    --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  }
+
+  html { font-size: 18px; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: calc(16/18*1rem);
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 24px 16px;
+    transition: background .2s, color .2s;
+  }
+
+  /* ── page header ── */
+  .page-header {
+    width: 100%; max-width: 860px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .page-title h1 {
+    font-size: calc(22/18*1rem); font-weight: 600;
+    color: var(--arb-border); letter-spacing: .02em; margin-bottom: 2px;
+  }
+  .subtitle { font-size: calc(13/18*1rem); color: var(--text-dim); }
+  .subtitle code {
+    font-family: var(--mono); font-size: calc(12/18*1rem);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 3px; padding: .05em .35em; color: var(--text-dim);
+  }
+
+  /* ── theme toggle ── */
+  .theme-toggle {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--btn-bg); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 12px; cursor: pointer;
+    color: var(--text-dim); font-size: calc(12/18*1rem);
+    font-family: var(--sans); line-height: 1.4; flex-shrink: 0;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .theme-toggle:hover {
+    background: var(--arb-bg); color: var(--arb-border); border-color: var(--arb-border);
+  }
+
+  /* ── config panel ── */
+  #config-panel {
+    width: 100%; max-width: 860px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 20px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    transition: background .2s;
+  }
+  .cfg-group { display: flex; align-items: center; gap: 8px; }
+  .cfg-label { font-size: calc(13/18*1rem); color: var(--text-dim); white-space: nowrap; }
+  .cfg-val { font-size: calc(13/18*1rem); font-weight: 700; color: var(--text); min-width: 1.4em; }
+  .cfg-sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+  .cfg-note { font-size: calc(11/18*1rem); color: var(--text-dim); font-style: italic; }
+  #agent-range, #speed-range { accent-color: var(--btn-primary); }
+
+  /* ── toggle switch (suppression) ── */
+  .toggle { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer; }
+  .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--track-off); border-radius: 20px; transition: background .2s;
+  }
+  .toggle-track::before {
+    content: ''; position: absolute;
+    width: 14px; height: 14px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .2s;
+  }
+  .toggle input:checked ~ .toggle-track { background: var(--track-on); }
+  .toggle input:checked ~ .toggle-track::before { transform: translateX(16px); }
+
+  /* ── phase banner ── */
+  #phase-banner {
+    width: 100%; max-width: 860px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 20px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 16px;
+    transition: background .2s;
+  }
+  #phase-badge {
+    font-family: var(--mono);
+    font-size: calc(11/18*1rem); font-weight: 700;
+    padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+    min-width: 100px; text-align: center;
+    letter-spacing: .05em; text-transform: uppercase; color: #fff;
+  }
+  #phase-badge.indigo { background: var(--badge-indigo); }
+  #phase-badge.purple { background: var(--badge-purple); }
+  #phase-badge.amber  { background: var(--badge-amber); }
+  #phase-badge.green  { background: var(--badge-green); }
+  #phase-desc { font-size: calc(15/18*1rem); color: var(--text); line-height: 1.5; }
+
+  /* ── main canvas area ── */
+  #stage {
+    width: 100%; max-width: 860px; position: relative; height: 340px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 20px;
+    transition: background .2s;
+  }
+
+  /* ── nodes ── */
+  .node {
+    position: absolute; border-radius: 10px;
+    border: 2px solid var(--border); padding: 10px 8px; text-align: center;
+    transition: border-color .25s, box-shadow .25s, background .2s;
+    user-select: none;
+  }
+  .node .node-label {
+    font-family: var(--mono); font-size: calc(10/18*1rem);
+    color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: 4px;
+  }
+  .node .node-name { font-size: calc(18/18*1rem); font-weight: 700; }
+  .node .node-detail {
+    font-family: var(--mono); font-size: calc(10/18*1rem);
+    color: var(--text-dim); margin-top: 5px; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .node.arbiter {
+    background: var(--arb-bg); border-color: var(--arb-border);
+    left: 50%; transform: translateX(-50%); top: 24px; width: 130px;
+  }
+  .node.arbiter .node-name { color: var(--arb-name); }
+
+  .node.participant { background: var(--part-bg); }
+  .node.participant .node-name { color: var(--part-name); }
+
+  .node.active { border-color: var(--active-border); box-shadow: 0 0 14px var(--active-glow); }
+  .node.arbiter.active { border-color: var(--arb-border); box-shadow: 0 0 14px var(--arb-glow); }
+  .node.winner { border-color: var(--winner-border); box-shadow: 0 0 18px var(--winner-glow); }
+  .node.winner .node-name { color: var(--winner-name); }
+  .node.dimmed { opacity: 0.35; }
+
+  /* ── SVG arrows ── */
+  #arrows-svg {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; pointer-events: none; overflow: visible;
+  }
+  .arrow { fill: none; stroke-width: 2; opacity: 0; transition: opacity .3s; }
+  .arrow.visible { opacity: 1; }
+  .arrow.bid    { stroke: var(--arrow-bid);    color: var(--arrow-bid); }
+  .arrow.resp   { stroke: var(--arrow-resp);   color: var(--arrow-resp); }
+  .arrow.signal { stroke: var(--arrow-signal); color: var(--arrow-signal); }
+  .arrow.bcast  { stroke: var(--arrow-bcast);  color: var(--arrow-bcast); }
+
+  /* ── flying packets ── */
+  .packet {
+    position: absolute; font-family: var(--mono);
+    font-size: calc(10/18*1rem); font-weight: 600;
+    padding: 2px 7px; border-radius: 10px; pointer-events: none;
+    opacity: 0; transform: translate(-50%,-50%);
+    transition: opacity .2s; white-space: nowrap; z-index: 10;
+  }
+  .packet.bid    { background: var(--pk-bid-bg);   color: var(--pk-bid-color);   border: 1px solid var(--arrow-bid); }
+  .packet.resp   { background: var(--pk-resp-bg);  color: var(--pk-resp-color);  border: 1px solid var(--arrow-resp); }
+  .packet.signal { background: var(--pk-sig-bg);   color: var(--pk-sig-color);   border: 1px solid var(--arrow-signal); }
+  .packet.bcast  { background: var(--pk-bcast-bg); color: var(--pk-bcast-color); border: 1px solid var(--arrow-bcast); }
+
+  /* ── tick counter ── */
+  #tick-display {
+    position: absolute; top: 12px; right: 14px;
+    font-family: var(--mono); font-size: calc(11/18*1rem); color: var(--text-dim);
+  }
+  #tick-display span { color: var(--text); font-weight: 700; }
+
+  /* ── log panel ── */
+  #log-panel {
+    width: 100%; max-width: 860px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
+    height: 120px; overflow-y: auto;
+    font-family: var(--mono); font-size: calc(13/18*1rem); line-height: 1.8;
+    transition: background .2s;
+  }
+  .log-entry { color: var(--log-dim); }
+  .log-entry .ts   { color: var(--log-ts); }
+  .log-entry .evt  { color: var(--log-evt); }
+  .log-entry .ok   { color: var(--log-ok); }
+  .log-entry .warn { color: var(--log-warn); }
+  .log-entry .hi   { color: var(--log-hi); }
+
+  /* ── controls ── */
+  #controls { display: flex; gap: 12px; align-items: center; }
+  button {
+    background: var(--btn-bg); border: 1px solid var(--border);
+    color: var(--btn-color); border-radius: 6px;
+    padding: 8px 18px; font-size: calc(14/18*1rem);
+    font-family: var(--sans); cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  button:hover { background: var(--btn-hover); }
+  button.primary { background: var(--btn-primary); border-color: var(--btn-primary); color: #fff; font-weight: 600; }
+  button.primary:hover { background: var(--btn-primary-hover); border-color: var(--btn-primary-hover); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #speed-label { font-size: calc(13/18*1rem); color: var(--text-dim); }
+
+  /* ── channel pill ── */
+  .channel-pill {
+    position: absolute; top: 10px; left: 14px;
+    font-family: var(--mono); font-size: calc(10/18*1rem);
+    background: var(--pill-bg); border: 1px solid var(--pill-border);
+    color: var(--pill-color); border-radius: 20px; padding: 2px 10px;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="page-title">
+    <h1>LTAP — Turn Allocation Protocol</h1>
+    <p class="subtitle" id="subtitle">3 participants · 1 arbiter · Channel: <code>general</code></p>
+  </div>
+  <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">&#9790; Dark</button>
+</div>
+
+<div id="phase-banner">
+  <div id="phase-badge">Ready</div>
+  <div id="phase-desc">Press <strong>Step</strong> to advance one phase, or <strong>Play</strong> to run automatically.</div>
+</div>
+
+<!-- Config -->
+<div id="config-panel">
+  <div class="cfg-group">
+    <span class="cfg-label">Agents:</span>
+    <input id="agent-range" type="range" min="1" max="10" value="3" step="1" style="width:110px">
+    <span class="cfg-val" id="agent-count">3</span>
+  </div>
+  <div class="cfg-sep"></div>
+  <div class="cfg-group">
+    <span class="cfg-label">Last Sender Suppression:</span>
+    <label class="toggle">
+      <input type="checkbox" id="suppression-toggle" checked>
+      <span class="toggle-track"></span>
+    </label>
+    <span class="cfg-note" id="suppression-note">COOLDOWN_TICKS = 1 (suppressed)</span>
+  </div>
+</div>
+
+<div id="stage">
+  <div class="channel-pill">channel: general</div>
+  <div id="tick-display">tick: <span id="tick-num">0</span></div>
+  <svg id="arrows-svg"></svg>
+
+  <!-- Arbiter (static) -->
+  <div class="node arbiter" id="arb">
+    <div class="node-label">Arbiter</div>
+    <div class="node-name">Arbiter</div>
+    <div class="node-detail" id="arb-detail">Waiting…</div>
+  </div>
+
+  <!-- Participant nodes injected by JS -->
+</div>
+
+<div id="log-panel"></div>
+
+<div id="controls">
+  <button class="primary" id="btn-step">▶ Step</button>
+  <button id="btn-play">⏩ Play</button>
+  <button id="btn-reset">↺ Reset</button>
+  <span id="speed-label">Speed:</span>
+  <input id="speed-range" type="range" min="300" max="2000" value="900" step="100" style="width:100px; accent-color:inherit">
+</div>
+
+<script>
+// ── Helpers ───────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function nodeCenter(el) {
+  const stage = $('stage').getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  return { x: r.left - stage.left + r.width / 2, y: r.top - stage.top + r.height / 2 };
+}
+
+// ── Config (mutable) ──────────────────────────────────────────────────────
+let numParticipants = 3;
+let COOLDOWN_TICKS = 1;
+
+const ALL_NAMES   = ['Alice','Bob','Cara','Dave','Eve','Frank','Grace','Hana','Ivan','Jana'];
+const INTENT_POOL = ['ask','agree','challenge','redirect','observe','clarify'];
+
+function getPIds() {
+  return Array.from({length: numParticipants}, (_, i) => `p${i + 1}`);
+}
+function getName(id) { return ALL_NAMES[parseInt(id.slice(1)) - 1]; }
+function getNameMap() {
+  const m = {};
+  getPIds().forEach(id => m[id] = getName(id));
+  return m;
+}
+
+// Deterministic bid per (participant index, tick) — no random() so steps are stable
+function generateBid(id, tick) {
+  const i = parseInt(id.slice(1)) - 1;
+  const h1 = ((i * 13 + tick * 7  + 5) % 17) / 17;   // want-to-send gate
+  const h2 = ((i * 7  + tick * 11 + 3) % 19) / 19;   // priority magnitude
+  const intent = INTENT_POOL[(i * 3 + tick) % INTENT_POOL.length];
+  const w = h1 > 0.18;
+  return { w, pri: w ? Math.round((0.2 + h2 * 0.75) * 100) / 100 : 0.0,
+           intent: w ? intent : 'pass' };
+}
+
+// ── Participant DOM rendering ──────────────────────────────────────────────
+function renderParticipants() {
+  document.querySelectorAll('.node.participant').forEach(el => el.remove());
+  const stage  = $('stage');
+  const stageW = stage.clientWidth || 860;
+  const n      = numParticipants;
+  const gap    = Math.max(4, Math.min(10, Math.floor(stageW / n / 10)));
+  const nodeW  = Math.max(70, Math.floor((stageW - 32 - gap * (n - 1)) / n));
+  const totalW = n * nodeW + (n - 1) * gap;
+  const startX = Math.round((stageW - totalW) / 2);
+  const nameSz = nodeW < 88 ? '0.82rem' : '1rem';
+
+  getPIds().forEach((id, i) => {
+    const div = document.createElement('div');
+    div.className = 'node participant';
+    div.id = id;
+    div.style.cssText =
+      `width:${nodeW}px; left:${startX + i * (nodeW + gap)}px; top:168px; right:auto; transform:none;`;
+    div.innerHTML =
+      `<div class="node-label">Participant</div>` +
+      `<div class="node-name" style="font-size:${nameSz}">${getName(id)}</div>` +
+      `<div class="node-detail" id="${id}-detail" title="ineligible_ticks">it: 0</div>`;
+    stage.appendChild(div);
+  });
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+const state = {
+  tick: 0,
+  phaseIdx: -1,
+  playing: false,
+  cooldown: {},       // tracks ineligible_ticks per participant
+  lastWinner: null,
+  prevHadWinner: false,
+  lastAddressed: null,
+  bids: {},
+  weighted: {},
+  winner: null,
+};
+
+function initCooldown() {
+  const c = {};
+  getPIds().forEach(id => c[id] = 0);
+  return c;
+}
+
+// ── Scenario script ───────────────────────────────────────────────────────
+function makeScript() {
+  return [
+    {
+      phase: "Phase 1 — Decrement Counters", cls: "indigo",
+      desc:  "Arbiter decrements each participant's ineligible_ticks (floor 0) before soliciting bids.",
+      fn: stepPhase1
+    },
+    {
+      phase: "Phase 2 — Collect Bids", cls: "indigo",
+      desc:  "Arbiter collects bids from eligible participants (ineligible_ticks == 0) in parallel, waiting up to BID_TIMEOUT. " +
+             "If the preceding tick produced a transmission, each eligible participant's BidRequest was bundled inside the BusEvent " +
+             "from Phase 6 — no separate BidRequest is sent. A standalone BidRequest is issued only on the first tick or after a no-transmission tick.",
+      fn: stepPhase2
+    },
+    {
+      phase: "Phase 3 — Weight Bids", cls: "indigo",
+      desc:  "Deterministic pipeline: (1) direct-address boost — if this participant was named in the most recent ParticipantTransmission, " +
+             "priority = max(priority, 0.95); (2) clamp [0, 1]. A bid is eligible only when want_to_send == true and weighted priority > 0.1.",
+      fn: stepPhase3
+    },
+    {
+      phase: "Phase 4 — Select Winner", cls: "purple",
+      desc:  "top = max weighted priority among eligible bids. Near-tie band: all bids with priority ≥ top − 0.05. " +
+             "Winner = uniform random.choice(contenders). RNG state captured before draw (Replayable conformance).",
+      fn: stepPhase4
+    },
+    {
+      phase: "Phase 5 — Signal & Receive", cls: "amber",
+      desc:  "Arbiter sends TransmissionSignal to winner. Winner replies with TransmissionResponse " +
+             "(content + addressed_to). Timeout: TRANSMISSION_TIMEOUT.",
+      fn: stepPhase5
+    },
+    {
+      phase: "Phase 6 — Broadcast Events", cls: "purple",
+      desc:  "Arbiter appends ParticipantTransmission to channel.log, pre-computes next-tick eligibility, " +
+             "then broadcasts BusEvent (with bid_request field) to every participant. " +
+             "Winner's ineligible_ticks set to COOLDOWN_TICKS + 1.",
+      fn: stepPhase6
+    },
+    {
+      phase: "Boundary — Tick Complete", cls: "green",
+      desc:  "Queued membership changes applied. channel.tick increments. A new tick cycle begins.",
+      fn: stepBoundary
+    },
+  ];
+}
+
+let script = makeScript();
+
+// ── Logging ───────────────────────────────────────────────────────────────
+function log(html) {
+  const panel = $('log-panel');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = html;
+  panel.appendChild(div);
+  panel.scrollTop = panel.scrollHeight;
+}
+function ts() { return `<span class="ts">[t${state.tick}]</span> `; }
+
+// ── Phase banner ──────────────────────────────────────────────────────────
+function setBanner(phase, desc, cls) {
+  $('phase-badge').textContent = phase;
+  $('phase-badge').className = cls || 'indigo';
+  $('phase-desc').innerHTML = desc;
+}
+
+// ── Node helpers ──────────────────────────────────────────────────────────
+function clearNodeStates() {
+  ['arb', ...getPIds()].forEach(id => {
+    const el = $(id);
+    if (el) el.classList.remove('active', 'winner', 'dimmed');
+  });
+}
+
+function setDetail(id, html) {
+  const el = $(id + '-detail');
+  if (el) el.innerHTML = html;
+}
+
+function updateParticipantDetails() {
+  getPIds().forEach(id => setDetail(id, `it: ${state.cooldown[id] ?? 0}`));
+}
+
+// ── Arrow / packet animation ──────────────────────────────────────────────
+let arrowSeq = 0;
+
+function clearArrows() { $('arrows-svg').innerHTML = ''; }
+
+async function flyPacket(srcEl, dstEl, label, cls, speedMs) {
+  const stage = $('stage');
+  const p = document.createElement('div');
+  p.className = `packet ${cls}`;
+  p.textContent = label;
+  p.style.opacity = '0';
+  stage.appendChild(p);
+
+  const src = nodeCenter(srcEl);
+  const dst = nodeCenter(dstEl);
+  const frames = Math.max(12, Math.floor(speedMs / 16));
+
+  for (let i = 0; i <= frames; i++) {
+    const t = i / frames;
+    p.style.left    = lerp(src.x, dst.x, t) + 'px';
+    p.style.top     = lerp(src.y, dst.y, t) + 'px';
+    p.style.opacity = t < 0.1 ? t * 10 : t > 0.9 ? (1 - t) * 10 : '1';
+    await sleep(16);
+  }
+  p.remove();
+}
+
+function drawArrow(srcEl, dstEl, cls) {
+  const svg = $('arrows-svg');
+  const src = nodeCenter(srcEl);
+  const dst = nodeCenter(dstEl);
+  const dx = dst.x - src.x, dy = dst.y - src.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const ux = dx / len, uy = dy / len;
+  const pad = 52;
+  const x1 = src.x + ux * pad, y1 = src.y + uy * pad;
+  const x2 = dst.x - ux * pad, y2 = dst.y - uy * pad;
+  const id = 'a' + (arrowSeq++);
+  svg.insertAdjacentHTML('beforeend',
+    `<defs><marker id="${id}" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">` +
+    `<polygon points="0 0,8 3,0 6" class="arrow ${cls}" style="fill:currentColor;opacity:1"/></marker></defs>` +
+    `<line class="arrow ${cls} visible" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#${id})"/>`
+  );
+}
+
+// ── Phase 1 ───────────────────────────────────────────────────────────────
+async function stepPhase1(speed) {
+  setBanner("Phase 1", "Decrement Counters", "indigo");
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+  setDetail('arb', 'Decrementing counters…');
+  log(ts() + `<span class="evt">PHASE 1</span> — Arbiter decrements ineligible_ticks (floor 0)`);
+
+  for (const id of getPIds()) {
+    if (state.cooldown[id] > 0) {
+      state.cooldown[id]--;
+      log(ts() + `  ineligible_ticks[${getName(id)}]: → <span class="warn">${state.cooldown[id]}</span>`);
+    }
+  }
+  updateParticipantDetails();
+  setDetail('arb', 'Counters decremented');
+  await sleep(speed * 0.4);
+}
+
+// ── Phase 2 ───────────────────────────────────────────────────────────────
+async function stepPhase2(speed) {
+  setBanner("Phase 2", "Collect Bids", "indigo");
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+
+  const ids   = getPIds();
+  const names = getNameMap();
+
+  // Generate deterministic bids, then override ineligible participants with safe default
+  state.bids = {};
+  ids.forEach(id => {
+    state.bids[id] = state.cooldown[id] > 0
+      ? { w: false, pri: 0.0, intent: 'pass' }
+      : generateBid(id, state.tick);
+  });
+
+  const eligibleIds = ids.filter(id => state.cooldown[id] === 0);
+  const eligibleEls = eligibleIds.map(id => $(id));
+
+  if (state.prevHadWinner) {
+    log(ts() + `<span class="evt">PHASE 2</span> — BidRequests bundled in Phase 6 BusEvent; awaiting responses (BID_TIMEOUT=5s)`);
+    setDetail('arb', 'Awaiting Bids…');
+    await sleep(speed * 0.15);
+  } else {
+    log(ts() + `<span class="evt">PHASE 2</span> — Standalone BidRequests → eligible participants (BID_TIMEOUT=5s)`);
+    setDetail('arb', 'Sending BidRequests…');
+    await Promise.all(eligibleEls.map(el => flyPacket($('arb'), el, 'BidRequest', 'bid', speed * 0.5)));
+    eligibleEls.forEach(el => drawArrow($('arb'), el, 'bid'));
+    setDetail('arb', 'Awaiting Bids…');
+    await sleep(speed * 0.2);
+  }
+
+  // Bids fly back from eligible participants
+  await Promise.all(eligibleIds.map(id => {
+    const b = state.bids[id];
+    const label = b.w ? `Bid(${b.pri.toFixed(1)},${b.intent})` : 'Bid(pass)';
+    return flyPacket($(id), $('arb'), label, 'resp', speed * 0.5);
+  }));
+  clearArrows();
+  eligibleEls.forEach(el => drawArrow(el, $('arb'), 'resp'));
+
+  ids.forEach(id => {
+    if (state.cooldown[id] > 0) {
+      log(ts() + `  <span class="ts">${names[id]}</span>: ineligible (it=${state.cooldown[id]}) — safe default`);
+    } else {
+      const b = state.bids[id];
+      log(ts() + `  <span class="ok">${names[id]}</span>: want_to_send=${b.w}, priority=${b.pri.toFixed(2)}, intent=${b.intent}`);
+    }
+  });
+  setDetail('arb', 'All bids received');
+  await sleep(speed * 0.3);
+}
+
+// ── Phase 3 ───────────────────────────────────────────────────────────────
+async function stepPhase3(speed) {
+  setBanner("Phase 3", "Weight Bids — direct-address boost · clamp [0,1] · eligible if want_to_send &amp;&amp; priority &gt; 0.1", "indigo");
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+  setDetail('arb', 'Weighting bids…');
+  log(ts() + `<span class="evt">PHASE 3</span> — Weight bids (deterministic pipeline)`);
+
+  const names = getNameMap();
+  state.weighted = {};
+  for (const [id, b] of Object.entries(state.bids)) {
+    let w = b.pri, note = '';
+    if (state.lastAddressed === id) { w = Math.max(w, 0.95); note = ' →max(0.95)(direct-addr)'; }
+    w = Math.min(1.0, Math.max(0.0, w));
+    state.weighted[id] = { ...b, wpri: w };
+    const elig = b.w && w > 0.1;
+    log(ts() + `  ${names[id]}: raw=${b.pri.toFixed(2)} → <span class="warn">${w.toFixed(2)}</span>${note}` +
+      (elig ? ' <span class="ok">✓ eligible</span>' : ' <span class="ts">✗ excluded</span>'));
+  }
+  setDetail('arb', 'Bids weighted');
+  await sleep(speed * 0.6);
+}
+
+// ── Phase 4 ───────────────────────────────────────────────────────────────
+async function stepPhase4(speed) {
+  setBanner("Phase 4", "Select Winner — near-tie band · uniform random.choice(contenders)", "purple");
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+  setDetail('arb', 'Selecting winner…');
+  log(ts() + `<span class="evt">PHASE 4</span> — Select winner`);
+
+  const eligible = Object.entries(state.weighted)
+    .filter(([, b]) => b.w && b.wpri > 0.1)
+    .map(([id, b]) => ({ id, wpri: b.wpri }));
+
+  if (eligible.length === 0) {
+    state.winner = null;
+    log(ts() + `  <span class="ts">No eligible bids — tick produces no transmission (contenders = [])</span>`);
+    setDetail('arb', 'No winner this tick');
+    await sleep(speed * 0.4);
+    return;
+  }
+
+  const top        = Math.max(...eligible.map(c => c.wpri));
+  const contenders = eligible.filter(c => c.wpri >= top - 0.05);
+  const pick       = contenders[Math.floor(Math.random() * contenders.length)].id;
+  state.winner     = pick;
+  state.lastWinner = pick;
+
+  const names   = getNameMap();
+  const bandStr = contenders.map(c => `${names[c.id]}(${c.wpri.toFixed(2)})`).join(', ');
+  log(ts() + `  top=${top.toFixed(2)}, contenders=[${bandStr}]`);
+  log(ts() + `  Winner: <span class="warn">${names[pick]}</span> (uniform random.choice, rng_state captured before draw)`);
+
+  getPIds().forEach(id => {
+    if (id === pick) $(id).classList.add('winner');
+    else if (!state.weighted[id]?.w || state.weighted[id].wpri <= 0.1) $(id).classList.add('dimmed');
+  });
+  setDetail('arb', `Winner: ${names[pick]}`);
+  await sleep(speed * 0.5);
+}
+
+// ── Phase 5 ───────────────────────────────────────────────────────────────
+async function stepPhase5(speed) {
+  setBanner("Phase 5", "Signal &amp; Receive — TransmissionSignal → TransmissionResponse", "amber");
+
+  if (!state.winner) {
+    log(ts() + `  <span class="ts">[Phase 5 skipped — no winner]</span>`);
+    await sleep(speed * 0.3);
+    return;
+  }
+
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+  const wEl   = $(state.winner);
+  wEl.classList.add('active');
+
+  const names = getNameMap();
+  const name  = names[state.winner];
+  log(ts() + `<span class="evt">PHASE 5</span> — Signal ${name}, await TransmissionResponse`);
+  setDetail('arb', `Signalling ${name}…`);
+
+  await flyPacket($('arb'), wEl, 'TransmissionSignal', 'signal', speed * 0.45);
+  drawArrow($('arb'), wEl, 'signal');
+  setDetail('arb', 'Awaiting response…');
+  await sleep(speed * 0.2);
+
+  // Pick address target: rotate through non-winner participants
+  const others  = getPIds().filter(id => id !== state.winner);
+  const addrId  = others.length > 0 ? others[state.tick % others.length] : null;
+  state.lastAddressed = addrId;
+  const addrName = addrId ? names[addrId] : 'null';
+
+  await flyPacket(wEl, $('arb'), `Response(→${addrName})`, 'resp', speed * 0.45);
+  clearArrows();
+  drawArrow(wEl, $('arb'), 'resp');
+
+  log(ts() + `  <span class="ok">${name}</span>: "…message content…" addressed_to=${addrName}`);
+  setDetail(state.winner, `spoke → ${addrName}`);
+  setDetail('arb', `Received from ${name}`);
+  await sleep(speed * 0.3);
+}
+
+// ── Phase 6 ───────────────────────────────────────────────────────────────
+async function stepPhase6(speed) {
+  setBanner("Phase 6", "Broadcast Events — append channel.log · BusEvent (with bid_request) → all participants", "purple");
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+
+  const ids   = getPIds();
+  const names = getNameMap();
+
+  if (state.winner) {
+    state.cooldown[state.winner] = COOLDOWN_TICKS + 1;
+    const name = names[state.winner];
+    log(ts() + `<span class="evt">PHASE 6</span> — Append ParticipantTransmission to channel.log`);
+    log(ts() + `  <span class="warn">${name}</span>.ineligible_ticks = ${COOLDOWN_TICKS + 1} (COOLDOWN_TICKS+1)`);
+    setDetail('arb', 'Pre-computing next-tick eligibility…');
+    await sleep(speed * 0.1);
+
+    // Pre-compute next-tick eligibility (after Phase 1 decrement)
+    const nextElig = {};
+    ids.forEach(id => nextElig[id] = Math.max(0, state.cooldown[id] - 1) === 0);
+
+    setDetail('arb', 'Broadcasting BusEvents…');
+    const pEls = ids.map(id => $(id));
+    await Promise.all(ids.map((id, i) => {
+      const isSelf = id === state.winner;
+      const hasBR  = nextElig[id];
+      const label  = (isSelf ? 'BusEvent(self' : 'BusEvent(') + (hasBR ? ',bid_req=✓)' : ',bid_req=∅)');
+      return flyPacket($('arb'), pEls[i], label, 'bcast', speed * 0.55);
+    }));
+    pEls.forEach(el => drawArrow($('arb'), el, 'bcast'));
+
+    ids.forEach(id => {
+      const hasBR = nextElig[id];
+      log(ts() + `  → <span class="hi">${names[id]}</span>: BusEvent(is_self=${id === state.winner}, bid_request=${hasBR ? '<BidRequest>' : 'null'})`);
+    });
+  } else {
+    log(ts() + `<span class="evt">PHASE 6</span> — <span class="ts">No transmission this tick; no BusEvent broadcast</span>`);
+    setDetail('arb', 'No-winner: no broadcast');
+  }
+
+  updateParticipantDetails();
+  setDetail('arb', 'Broadcast complete');
+  await sleep(speed * 0.4);
+}
+
+// ── Boundary ──────────────────────────────────────────────────────────────
+async function stepBoundary(speed) {
+  setBanner("Boundary", "Queued membership changes applied · channel.tick incremented", "green");
+  clearArrows(); clearNodeStates();
+  $('arb').classList.add('active');
+
+  state.prevHadWinner = state.winner !== null;
+  state.tick++;
+  $('tick-num').textContent = state.tick;
+
+  log(ts() + `<span class="evt">BOUNDARY</span> — Membership queue flushed · channel.tick → <span class="ok">${state.tick}</span>`);
+  setDetail('arb', `tick ${state.tick} ready`);
+  await sleep(speed * 0.5);
+
+  state.phaseIdx = -1;
+  script = makeScript();
+  clearArrows(); clearNodeStates(); updateParticipantDetails();
+  setBanner("Ready", `Tick ${state.tick} — press <strong>Step</strong> to begin Phase 1.`, "green");
+  setDetail('arb', `Tick ${state.tick}: awaiting bids`);
+}
+
+// ── Step / Play ───────────────────────────────────────────────────────────
+function getSpeed() { return 2200 - parseInt($('speed-range').value); }
+
+async function doStep() {
+  state.phaseIdx++;
+  if (state.phaseIdx >= script.length) state.phaseIdx = 0;
+  const step = script[state.phaseIdx];
+  setBanner(step.phase, step.desc, step.cls);
+  await step.fn(getSpeed());
+}
+
+async function runPlay() {
+  state.playing = true;
+  $('btn-play').textContent = '⏸ Pause';
+  $('btn-step').disabled = true;
+  while (state.playing) {
+    await doStep();
+    await sleep(getSpeed() * 0.15);
+  }
+}
+
+function stopPlay() {
+  state.playing = false;
+  $('btn-play').textContent = '⏩ Play';
+  $('btn-step').disabled = false;
+}
+
+function resetAll() {
+  stopPlay();
+  state.tick          = 0;
+  state.phaseIdx      = -1;
+  state.cooldown      = initCooldown();
+  state.lastWinner    = null;
+  state.prevHadWinner = false;
+  state.lastAddressed = null;
+  state.bids          = {};
+  state.weighted      = {};
+  state.winner        = null;
+  script = makeScript();
+
+  renderParticipants();
+
+  const n = numParticipants;
+  $('subtitle').innerHTML =
+    `${n} participant${n !== 1 ? 's' : ''} · 1 arbiter · Channel: <code>general</code>`;
+  $('tick-num').textContent = '0';
+  clearArrows(); clearNodeStates(); updateParticipantDetails();
+  setDetail('arb', 'Waiting…');
+  setBanner("Ready", "Press <strong>Step</strong> to advance one phase, or <strong>Play</strong> to run automatically.", "green");
+  $('log-panel').innerHTML = '';
+  log(`<span class="ts">[init]</span> <span class="evt">channel:general</span> · ${n} participants · COOLDOWN_TICKS=${COOLDOWN_TICKS} · arbiter ready`);
+}
+
+// ── Wiring ────────────────────────────────────────────────────────────────
+$('btn-step').addEventListener('click', () => { if (!state.playing) doStep(); });
+$('btn-play').addEventListener('click', () => { if (state.playing) stopPlay(); else runPlay(); });
+$('btn-reset').addEventListener('click', resetAll);
+
+$('agent-range').addEventListener('input', () => {
+  numParticipants = parseInt($('agent-range').value);
+  $('agent-count').textContent = numParticipants;
+  resetAll();
+});
+
+$('suppression-toggle').addEventListener('change', () => {
+  COOLDOWN_TICKS = $('suppression-toggle').checked ? 1 : 0;
+  $('suppression-note').textContent = COOLDOWN_TICKS === 1
+    ? 'COOLDOWN_TICKS = 1 (suppressed)'
+    : 'COOLDOWN_TICKS = 0 (not suppressed)';
+  resetAll();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+resetAll();
+
+// ── Dark mode toggle ──────────────────────────────────────────────────────
+(function() {
+  var btn = document.getElementById('theme-toggle');
+  function sync() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    btn.innerHTML = dark ? '&#9728; Light' : '&#9790; Dark';
+    btn.setAttribute('aria-pressed', String(dark));
+  }
+  sync();
+  btn.addEventListener('click', function() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (dark) {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('ltap-theme', 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('ltap-theme', 'dark');
+    }
+    sync();
+  });
+})();
+</script>
+</body>
+</html>
