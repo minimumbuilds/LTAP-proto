@@ -30,14 +30,14 @@ The protocol is intentionally analogous in scope to a media-access control layer
 | `Channel` | A discrete broadcast domain managed independently by the Arbiter. Each channel has its own participant set, log, and tick counter. A participant may be registered on multiple channels simultaneously; its arbitration state (cooldown, ineligibility, failure streak) is tracked separately per channel. |
 | `Bus` | The aggregate passive state managed by the Arbiter: the collection of all active channels. |
 | `Tick` | One indivisible arbitration cycle within a single channel, driven by the Arbiter. Tick semantics are logical, not wall-clock. Channels tick independently. |
-| `Bid phase` | Phases 1–4 of a tick: cooldown decrement, bid collection, bid weighting, and winner selection. No participant output is produced. |
+| `Bid phase` | Phases 1–4 of a tick: ineligibility decrement, bid collection, bid weighting, and winner selection. No participant output is produced. |
 | `Execution phase` | Phases 5–6 of a tick: winner transmission and event broadcast. |
 | `BidRequest` | A message sent by the Arbiter to a participant to open the bid phase of a tick on a specific channel. |
 | `Bid` | A structured intent declaration returned by a participant in response to a BidRequest. Bids are opaque to all other participants until the tick concludes. |
 | `TransmissionResponse` | The message returned by the winning participant when signalled, carrying its output content and optional addressee. |
 | `LogEntry` | A record appended to a channel's log; either a `ParticipantTransmission` or a `SystemEvent`. |
 | `Bus Event` | A structured message broadcast by the Arbiter to participants after each tick, carrying a transmission or an infrastructure notification, scoped to the channel on which the event occurred. |
-| `Cooldown` | A per-participant, per-channel backoff counter, maintained by the Arbiter, that suppresses bid priority for a fixed number of ticks after a participant transmits on that channel. |
+| `Cooldown` | A per-participant, per-channel dampening window covering the `COOLDOWN_TICKS` ticks that follow a participant's transmission on that channel. Not a stored counter: the Arbiter derives it from `last_acted_tick` as `channel.tick − last_acted_tick ≤ COOLDOWN_TICKS` (§4.3). A participant that has never transmitted on the channel has no cooldown window. |
 | `Direct address` | A transmission explicitly directed at a named participant. Triggers a strong priority bias for that participant on every subsequent tick of the same channel until another `ParticipantTransmission` on that channel supersedes it as the most recent log entry. |
 | `Equivalent Mechanism` | A generation-time constraint mechanism that satisfies the constrained decoding requirement (§4.2). An equivalent mechanism MUST guarantee: (1) zero emission of out-of-schema tokens; (2) bounded output strictly conforming to the Bid Schema (§3.3.1); and (3) no transient generation of discardable content — the model must not internally generate and then discard out-of-schema tokens, as this risks hidden state divergence even when only conforming output is emitted. Post-generation filtering or validation does not qualify. |
 
@@ -50,12 +50,13 @@ The protocol is intentionally analogous in scope to a media-access control layer
 ```
 Participant {
   id:               ParticipantId
-  cooldown:         int    // maintained by the Arbiter; see §3.8 for semantics
-  ineligible_ticks: int    // ticks before participant may bid again; Arbiter-maintained
-  failure_streak:   int    // consecutive transmission failures; maintained by the Arbiter
-  last_acted_tick:  int    // maintained by the Arbiter
+  ineligible_ticks: int           // ticks before participant may bid again; Arbiter-maintained
+  failure_streak:   int           // consecutive transmission failures; maintained by the Arbiter
+  last_acted_tick:  int | null    // tick of most recent transmission on this channel; null until first transmission
 }
 ```
+
+There is no stored cooldown counter: the cooldown window (§4.3) is derived from `last_acted_tick` at weighting time. `last_acted_tick` initialises to `null` on registration, so a participant that has never transmitted is never dampened.
 
 The Participant record contains only the state required for arbitration. How a participant stores its own history, builds its internal context, or manages memory are client-side concerns outside this protocol.
 
@@ -193,11 +194,11 @@ Arbiter {
 }
 ```
 
-> **Parameter floor values.** `COOLDOWN_TICKS = 0` effectively disables cooldown dampening: the counter is set to 1 post-transmission but decrements to 0 before weighting, so no bids are dampened. `MAX_CONSECUTIVE_FAILURES = 0` means every transmission failure immediately imposes ineligibility, since `failure_streak >= 0` is always true. Both are valid configurations for their respective disabling or maximum-strictness effects. Negative values are not permitted.
+> **Parameter floor values.** `COOLDOWN_TICKS = 0` disables cooldown dampening: the window `0 < channel.tick − last_acted_tick ≤ 0` is empty, so no bids are ever dampened. `MAX_CONSECUTIVE_FAILURES = 0` means every transmission failure immediately imposes ineligibility, since `failure_streak >= 0` is always true. Both are valid configurations for their respective disabling or maximum-strictness effects. Negative values are not permitted.
 
-> **Cooldown counter semantics.** `COOLDOWN_TICKS = N` means the participant's **next N bids** will be dampened. Because Phase 1 decrements before Phase 3 checks, the Arbiter sets `cooldown = COOLDOWN_TICKS + 1` in Phase 6 so the dampener fires for exactly N consecutive bids. The same `+1` offset applies to `ineligible_ticks`.
+> **Cooldown window semantics.** `COOLDOWN_TICKS = N` means the participant's bids are dampened on exactly the N ticks following a transmission. The window is derived at weighting time — `last_acted_tick ≠ null` and `channel.tick − last_acted_tick ≤ COOLDOWN_TICKS` — rather than maintained as a stored counter, so there is nothing to decrement and no offset to compensate for. (A `+1` offset applies only to `ineligible_ticks` (§4.5), because Phase 1 decrements it before the Phase 2 eligibility check.)
 
-The Arbiter's mutable state is limited to the Bus and per-participant cooldown, ineligibility, and failure-streak counters (all per-channel). It must hold no participant-influenced *arbitration state* beyond the protocol records defined here, and must not semantically interpret participant content beyond `addressed_to`.
+The Arbiter's mutable state is limited to the Bus and per-participant ineligibility and failure-streak counters plus `last_acted_tick` (all per-channel). It must hold no participant-influenced *arbitration state* beyond the protocol records defined here, and must not semantically interpret participant content beyond `addressed_to`.
 
 ### 3.9 MemberListResponse
 
@@ -226,7 +227,7 @@ foreach channel in bus.channels:
   foreach tick:                              // driven by the Arbiter
 
     // — Bid phase —
-    Phase 1:  Decrement counters            (channel.cooldown and channel.ineligible_ticks for all participants)
+    Phase 1:  Decrement counters            (ineligible_ticks for all participants)
     Phase 2:  Collect bids                  (solicit eligible participants in parallel; wait up to BID_TIMEOUT)
     Phase 3:  Weight bids                   (deterministic; no external calls)
     Phase 4:  Select winner                 (deterministic + stochastic tie-break)
@@ -244,7 +245,7 @@ Membership changes queued during a tick are applied at the Boundary step, after 
 
 ### 4.1 Phase 1 — Decrement Counters
 
-The Arbiter decrements every participant's `cooldown` and `ineligible_ticks` by one, each floored at zero, for the channel being ticked. This phase runs unconditionally regardless of channel occupancy. When `channel.participants` is empty the tick still completes normally — no bids are collected, no winner is selected, and `channel.tick` advances at the Boundary step. This preserves consistent tick numbering regardless of occupancy.
+The Arbiter decrements every participant's `ineligible_ticks` by one, floored at zero, for the channel being ticked. (Cooldown involves no counter and nothing to decrement; it is derived from `last_acted_tick` in Phase 3.) This phase runs unconditionally regardless of channel occupancy. When `channel.participants` is empty the tick still completes normally — no bids are collected, no winner is selected, and `channel.tick` advances at the Boundary step. This preserves consistent tick numbering regardless of occupancy.
 
 ### 4.2 Phase 2 — Bid Collection
 
@@ -299,15 +300,17 @@ The Arbiter post-processes raw priority values through a deterministic pipeline.
 
 | Step | Operation | Condition |
 |---|---|---|
-| 1 | `priority × 0.3` | `participant.cooldown > 0` |
-| 2 | `priority = max(priority, 0.95)` | Most recent `ParticipantTransmission` in `channel.log` has `addressed_to` == this participant |
+| 1 | `priority × 0.3` | `participant.last_acted_tick ≠ null` and `channel.tick − participant.last_acted_tick ≤ COOLDOWN_TICKS` (cooldown window) |
+| 2 | `priority × 2.0` | Most recent `ParticipantTransmission` in `channel.log` has `addressed_to` == this participant |
 | 3 | `priority = clamp(priority, 0.0, 1.0)` | Always; applied last |
 
-**Rationale — step 1 (cooldown dampening).** Prevents monopoly without hard-locking turns. Multiplicative, not binary: a participant under cooldown may still win if its raw priority is high enough.
+**Rationale — step 1 (cooldown dampening).** Prevents monopoly without hard-locking turns. Multiplicative, not binary: a participant under cooldown may still win if its raw priority is high enough. The winner of a tick remains eligible on subsequent ticks; only its priority is dampened.
 
-**Rationale — step 2 (direct-address bias).** Gives a strong priority bias to a participant explicitly addressed in the most recent participant transmission on this channel. Evaluated after cooldown dampening; system events never displace it. Self-address is suppressed at TransmissionResponse validation (§4.5). This is a bias, not a guarantee: the participant must still return `want_to_send: true`, and another participant near 0.95 may win the tie-break.
+**Rationale — step 2 (direct-address bias).** Gives a priority bias to a participant explicitly addressed in the most recent participant transmission on this channel. System events never displace it. Self-address is suppressed at TransmissionResponse validation (§4.5). The bias is multiplicative so the addressee's own priority signal is preserved: a reluctant addressee (low raw priority) receives a nudge, not a command, and an addressee that bids `0.0` or `want_to_send: false` is not dragged into the conversation. This is a bias, not a guarantee.
 
-**Ping-pong tradeoff.** When two participants consistently address each other, each alternately holds the 0.95 floor, producing near-guaranteed turn alternation. This is the intended behaviour for directed conversation threading, but it significantly weakens the fairness properties described in §4.4 for any third participant. Deployments where this is undesirable should apply an application-layer cap on the number of consecutive directly-addressed wins, or suppress the bias after N consecutive applications.
+> **Design note — why not a floor.** Earlier drafts of this specification used `priority = max(priority, 0.95)` here, applied after cooldown dampening. Field deployment showed this erases the addressee's own priority signal (any willing addressee jumps to 0.95 regardless of its raw bid) and, because the floor overrode dampening, produced persistent A→B→C→A address loops that cooldown could not break. The multiplicative form composes with step 1 — an addressed participant inside its cooldown window nets `× 0.6` — so directed threading is favoured without becoming self-sustaining.
+
+**Ping-pong tradeoff.** When two participants consistently address each other, each receives the ×2.0 bias in alternation, which favours turn alternation between them over any third participant whose raw bids are similar. Because the bias composes with cooldown dampening and preserves raw-priority ordering, a third participant with a sufficiently strong bid can still break in. Deployments needing stronger fairness for bystanders may additionally cap consecutive directly-addressed wins at the application layer.
 
 A bid is eligible only when `want_to_send == true` and weighted `priority > 0.1`.
 
@@ -356,12 +359,13 @@ The Arbiter signals the winning participant that it holds transmission rights an
 
 **Log append.** On successful receipt of a valid `TransmissionResponse`, the Arbiter appends a `ParticipantTransmission` entry to `channel.log`. This append is the authoritative record of the tick's output and occurs before any broadcast attempt.
 
-**Broadcast.** The Arbiter then attempts to deliver a `BusEvent` of type `"transmission"` (with `channel_id` set) to every participant in the channel (`is_self: true` for the sender, `is_self: false` for all others). Before sending, the Arbiter applies the post-transmission state updates for the winner (below), then pre-computes next-tick eligibility for each participant: eligible when `max(0, ineligible_ticks - 1) == 0`. For each eligible participant the Arbiter MUST set `bid_request` to the `BidRequest` for the next tick; for ineligible participants `bid_request` is null. The winner's `cooldown` (not `ineligible_ticks`) is updated, so the winner remains eligible and receives a `bid_request` (its bids will be dampened by Phase 3 while `cooldown > 0`). Broadcast is best-effort: delivery failures to individual participants are independent, do not affect delivery to others, and do not undo the log append. A participant that fails to receive a BusEvent remains registered on the channel; repeated delivery failures may be grounds for deregistration under implementation-defined policy. A participant that fails to receive its bundled `bid_request` is treated as a bid timeout for that tick (safe default applied).
+**Broadcast.** The Arbiter then attempts to deliver a `BusEvent` of type `"transmission"` (with `channel_id` set) to every participant in the channel (`is_self: true` for the sender, `is_self: false` for all others). Before sending, the Arbiter applies the post-transmission state updates for the winner (below), then pre-computes next-tick eligibility for each participant: eligible when `max(0, ineligible_ticks - 1) == 0`. For each eligible participant the Arbiter MUST set `bid_request` to the `BidRequest` for the next tick; for ineligible participants `bid_request` is null. The winner's `last_acted_tick` (not `ineligible_ticks`) is updated, so the winner remains eligible and receives a `bid_request` (its bids will be dampened by Phase 3 while inside the cooldown window). Broadcast is best-effort: delivery failures to individual participants are independent, do not affect delivery to others, and do not undo the log append. A participant that fails to receive a BusEvent remains registered on the channel; repeated delivery failures may be grounds for deregistration under implementation-defined policy. A participant that fails to receive its bundled `bid_request` is treated as a bid timeout for that tick (safe default applied).
 
 The Arbiter sets, within the channel's participant record for the winner:
 - `winner.last_acted_tick = channel.tick`
-- `winner.cooldown = COOLDOWN_TICKS + 1`
 - `winner.failure_streak = 0`
+
+No cooldown counter is written: setting `last_acted_tick` is what opens the winner's cooldown window (§4.3).
 
 If Phase 5 produced no valid transmission, the Arbiter still advances `channel.tick` but appends no entry and broadcasts no event.
 
@@ -378,7 +382,7 @@ Membership is scoped to a channel. A participant registers on, and deregisters f
 A participant registers on a specific channel. The Arbiter:
 
 1. **Duplicate check.** If the `ParticipantId` is already present in `channel.participants` for the target channel, the Arbiter must reject the registration. The existing participant's record and counters are unchanged. The rejection response format is implementation-defined. The same `ParticipantId` may be registered on other channels without conflict.
-2. Adds the participant to `channel.participants` with `cooldown = 0`, `ineligible_ticks = 0`, `failure_streak = 0`.
+2. Adds the participant to `channel.participants` with `ineligible_ticks = 0`, `failure_streak = 0`, `last_acted_tick = null`.
 3. Appends a `SystemEvent` to `channel.log` with `tick = channel.tick` (the completing tick's number, before the increment).
 4. Sends a registration acknowledgment to the registering participant. The acknowledgment must be sent before the channel's next tick begins. Its format is implementation-defined; it must include a `MemberListResponse` (§3.9) — providing the current participant list, `channel_id`, and `channel.tick` — so the participant arrives with a complete view of who is on the channel and which tick it will first be solicited on. The registering participant does not receive a join `BusEvent`; the acknowledgment is its sole confirmation.
 5. Broadcasts a `BusEvent` of type `"system"` (with `channel_id` set) to all **existing** participants on that channel. This broadcast is unconditional. The registering participant does not receive its own join event.
@@ -503,8 +507,8 @@ The table below contrasts LTAP's protocol-level mechanisms against the common de
 | **Selection Logic** | Deterministic & stochastic: participants submit numeric priority bids (0.0–1.0); the Arbiter applies a deterministic weighting pipeline then selects uniformly from a near-tie band. | LLM-based: a coordinator model reasons in natural language about who should speak next, based on conversation context and role descriptions. |
 | **Speaker Intent** | Native: each participant explicitly signals `want_to_send`, `priority`, and an `IntentTag` in Phase 2 Bid Collection — a structured, protocol-defined mechanism. | Simulated: frameworks lack a dedicated "I want to speak" signal; intent must be embedded in prompts or implemented as custom routing logic. |
 | **Concurrency** | Strictly serial per channel (Protocol Invariant 6): bids are collected in parallel, but transmission rights are granted to exactly one winner per tick. | Variable: default behaviour is serial, but LangGraph supports parallel node execution and AutoGen supports concurrent sub-chats ("swarm" patterns). |
-| **Backoff / Cooldown** | Automated: `ineligible_ticks` is set to `COOLDOWN_TICKS + 1` after a win, preventing a participant from immediately dominating subsequent ticks without any coordinator intervention. | Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions. |
-| **Direct Addressing** | Protocol-level: if the most recent `ParticipantTransmission` named a participant in `addressed_to`, that participant receives a hard priority floor of 0.95 in the next weighting pass (§4.3). | Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework. |
+| **Backoff / Cooldown** | Automated: for the `COOLDOWN_TICKS` ticks after a win, the winner's bids are multiplicatively dampened (×0.3), preventing a participant from immediately dominating subsequent ticks without any coordinator intervention — while leaving it able to win when no one else contends. | Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions. |
+| **Direct Addressing** | Protocol-level: if the most recent `ParticipantTransmission` named a participant in `addressed_to`, that participant's bid priority is multiplied ×2.0 in the next weighting pass (§4.3). | Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework. |
 
 ---
 
