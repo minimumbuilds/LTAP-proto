@@ -346,7 +346,7 @@
       <input type="checkbox" id="suppression-toggle" checked>
       <span class="toggle-track"></span>
     </label>
-    <span class="cfg-note" id="suppression-note">COOLDOWN_TICKS = 1 (suppressed)</span>
+    <span class="cfg-note" id="suppression-note">COOLDOWN_TICKS = 1 (winner dampened ×0.3 next tick)</span>
   </div>
 </div>
 
@@ -446,7 +446,8 @@ const state = {
   tick: 0,
   phaseIdx: -1,
   playing: false,
-  cooldown: {},       // tracks ineligible_ticks per participant
+  cooldown: {},       // tracks ineligible_ticks per participant (failure penalty only; stays 0 in this demo)
+  lastActed: {},      // tick of most recent transmission per participant (null = never; drives cooldown window)
   lastWinner: null,
   prevHadWinner: false,
   lastAddressed: null,
@@ -459,6 +460,17 @@ function initCooldown() {
   const c = {};
   getPIds().forEach(id => c[id] = 0);
   return c;
+}
+
+function initLastActed() {
+  const c = {};
+  getPIds().forEach(id => c[id] = null);
+  return c;
+}
+
+function inCooldownWindow(id) {
+  return state.lastActed[id] !== null &&
+         state.tick - state.lastActed[id] <= COOLDOWN_TICKS;
 }
 
 // ── Scenario script ───────────────────────────────────────────────────────
@@ -478,8 +490,9 @@ function makeScript() {
     },
     {
       phase: "Phase 3 — Weight Bids", cls: "indigo",
-      desc:  "Deterministic pipeline: (1) direct-address boost — if this participant was named in the most recent ParticipantTransmission, " +
-             "priority = max(priority, 0.95); (2) clamp [0, 1]. A bid is eligible only when want_to_send == true and weighted priority > 0.1.",
+      desc:  "Deterministic pipeline: (1) cooldown dampening — priority × 0.3 while channel.tick − last_acted_tick ≤ COOLDOWN_TICKS; " +
+             "(2) direct-address bias — priority × 2.0 if this participant was named in the most recent ParticipantTransmission; " +
+             "(3) clamp [0, 1]. A bid is eligible only when want_to_send == true and weighted priority > 0.1.",
       fn: stepPhase3
     },
     {
@@ -498,7 +511,7 @@ function makeScript() {
       phase: "Phase 6 — Broadcast Events", cls: "purple",
       desc:  "Arbiter appends ParticipantTransmission to channel.log, pre-computes next-tick eligibility, " +
              "then broadcasts BusEvent (with bid_request field) to every participant. " +
-             "Winner's ineligible_ticks set to COOLDOWN_TICKS + 1.",
+             "Winner's last_acted_tick is set — opening its cooldown window; the winner stays eligible.",
       fn: stepPhase6
     },
     {
@@ -543,7 +556,10 @@ function setDetail(id, html) {
 }
 
 function updateParticipantDetails() {
-  getPIds().forEach(id => setDetail(id, `it: ${state.cooldown[id] ?? 0}`));
+  getPIds().forEach(id => {
+    const la = state.lastActed[id];
+    setDetail(id, `it: ${state.cooldown[id] ?? 0} · last: ${la === null || la === undefined ? '∅' : 't' + la}`);
+  });
 }
 
 // ── Arrow / packet animation ──────────────────────────────────────────────
@@ -666,7 +682,7 @@ async function stepPhase2(speed) {
 
 // ── Phase 3 ───────────────────────────────────────────────────────────────
 async function stepPhase3(speed) {
-  setBanner("Phase 3", "Weight Bids — direct-address boost · clamp [0,1] · eligible if want_to_send &amp;&amp; priority &gt; 0.1", "indigo");
+  setBanner("Phase 3", "Weight Bids — cooldown ×0.3 · direct-address ×2.0 · clamp [0,1] · eligible if want_to_send &amp;&amp; priority &gt; 0.1", "indigo");
   clearArrows(); clearNodeStates();
   $('arb').classList.add('active');
   setDetail('arb', 'Weighting bids…');
@@ -676,7 +692,8 @@ async function stepPhase3(speed) {
   state.weighted = {};
   for (const [id, b] of Object.entries(state.bids)) {
     let w = b.pri, note = '';
-    if (state.lastAddressed === id) { w = Math.max(w, 0.95); note = ' →max(0.95)(direct-addr)'; }
+    if (inCooldownWindow(id))       { w *= 0.3; note += ' ×0.3(cooldown)'; }
+    if (state.lastAddressed === id) { w *= 2.0; note += ' ×2.0(direct-addr)'; }
     w = Math.min(1.0, Math.max(0.0, w));
     state.weighted[id] = { ...b, wpri: w };
     const elig = b.w && w > 0.1;
@@ -777,10 +794,10 @@ async function stepPhase6(speed) {
   const names = getNameMap();
 
   if (state.winner) {
-    state.cooldown[state.winner] = COOLDOWN_TICKS + 1;
+    state.lastActed[state.winner] = state.tick;
     const name = names[state.winner];
     log(ts() + `<span class="evt">PHASE 6</span> — Append ParticipantTransmission to channel.log`);
-    log(ts() + `  <span class="warn">${name}</span>.ineligible_ticks = ${COOLDOWN_TICKS + 1} (COOLDOWN_TICKS+1)`);
+    log(ts() + `  <span class="warn">${name}</span>.last_acted_tick = ${state.tick} — cooldown window open for ${COOLDOWN_TICKS} tick(s); winner stays eligible`);
     setDetail('arb', 'Pre-computing next-tick eligibility…');
     await sleep(speed * 0.1);
 
@@ -865,6 +882,7 @@ function resetAll() {
   state.tick          = 0;
   state.phaseIdx      = -1;
   state.cooldown      = initCooldown();
+  state.lastActed     = initLastActed();
   state.lastWinner    = null;
   state.prevHadWinner = false;
   state.lastAddressed = null;
@@ -900,8 +918,8 @@ $('agent-range').addEventListener('input', () => {
 $('suppression-toggle').addEventListener('change', () => {
   COOLDOWN_TICKS = $('suppression-toggle').checked ? 1 : 0;
   $('suppression-note').textContent = COOLDOWN_TICKS === 1
-    ? 'COOLDOWN_TICKS = 1 (suppressed)'
-    : 'COOLDOWN_TICKS = 0 (not suppressed)';
+    ? 'COOLDOWN_TICKS = 1 (winner dampened ×0.3 next tick)'
+    : 'COOLDOWN_TICKS = 0 (no dampening)';
   resetAll();
 });
 
