@@ -187,14 +187,20 @@ Bus {
 ```
 Arbiter {
   bus:                        Bus
-  COOLDOWN_TICKS:             int     // dampened-bid count after transmitting; reference: 2
+  COOLDOWN_TICKS:             int     // dampened-bid window after transmitting; reference: 2
+  DAMPENING_FACTOR:           float   // cooldown multiplier, §4.3 step 1; range [0.0, 1.0]; reference: 0.3
+  ADDRESS_BIAS:               float   // direct-address multiplier, §4.3 step 2; range ≥ 0.0; reference: 2.0
+  ELIGIBILITY_THRESHOLD:      float   // weighted priority must exceed this to contend, §4.4; range [0.0, 1.0); reference: 0.1
+  TIE_BAND:                   float   // near-tie band width for winner selection, §4.4; range [0.0, 1.0]; reference: 0.05
   BID_TIMEOUT:                float   // seconds to wait for a bid response; reference: 5.0
   TRANSMISSION_TIMEOUT:       float   // seconds to wait for a TransmissionResponse; reference: 60.0
   MAX_CONSECUTIVE_FAILURES:   int     // failures before ineligibility; reference: 2
 }
 ```
 
-> **Parameter floor values.** `COOLDOWN_TICKS = 0` disables cooldown dampening: the window `0 < channel.tick − last_acted_tick ≤ 0` is empty, so no bids are ever dampened. `MAX_CONSECUTIVE_FAILURES = 0` means every transmission failure immediately imposes ineligibility, since `failure_streak >= 0` is always true. Both are valid configurations for their respective disabling or maximum-strictness effects. Negative values are not permitted.
+All weighting and selection constants are deployment-configurable parameters with the reference values above as defaults; the arithmetic in §4.3 and §4.4 is expressed in terms of these names.
+
+> **Parameter floor values.** `COOLDOWN_TICKS = 0` disables cooldown dampening: the window `0 < channel.tick − last_acted_tick ≤ 0` is empty, so no bids are ever dampened. `DAMPENING_FACTOR = 1.0` also disables dampening (the multiplier is identity); `DAMPENING_FACTOR = 0.0` turns the cooldown window into a hard mute — the weighted priority becomes 0 and fails the eligibility threshold, reproducing a lockout model as configuration. `ADDRESS_BIAS = 1.0` disables the direct-address bias. `TIE_BAND = 0.0` restricts the contender set to exact ties. `MAX_CONSECUTIVE_FAILURES = 0` means every transmission failure immediately imposes ineligibility, since `failure_streak >= 0` is always true. All are valid configurations for their respective disabling or maximum-strictness effects. Negative values are not permitted.
 
 > **Cooldown window semantics.** `COOLDOWN_TICKS = N` means the participant's bids are dampened on exactly the N ticks following a transmission. The window is derived at weighting time — `last_acted_tick ≠ null` and `channel.tick − last_acted_tick ≤ COOLDOWN_TICKS` — rather than maintained as a stored counter, so there is nothing to decrement and no offset to compensate for. (A `+1` offset applies only to `ineligible_ticks` (§4.5), because Phase 1 decrements it before the Phase 2 eligibility check.)
 
@@ -300,30 +306,32 @@ The Arbiter post-processes raw priority values through a deterministic pipeline.
 
 | Step | Operation | Condition |
 |---|---|---|
-| 1 | `priority × 0.3` | `participant.last_acted_tick ≠ null` and `channel.tick − participant.last_acted_tick ≤ COOLDOWN_TICKS` (cooldown window) |
-| 2 | `priority × 2.0` | Most recent `ParticipantTransmission` in `channel.log` has `addressed_to` == this participant |
+| 1 | `priority × DAMPENING_FACTOR` | `participant.last_acted_tick ≠ null` and `channel.tick − participant.last_acted_tick ≤ COOLDOWN_TICKS` (cooldown window) |
+| 2 | `priority × ADDRESS_BIAS` | Most recent `ParticipantTransmission` in `channel.log` has `addressed_to` == this participant |
 | 3 | `priority = clamp(priority, 0.0, 1.0)` | Always; applied last |
+
+Reference values: `DAMPENING_FACTOR = 0.3`, `ADDRESS_BIAS = 2.0` (§3.8). Worked examples below use the reference values.
 
 **Rationale — step 1 (cooldown dampening).** Prevents monopoly without hard-locking turns. Multiplicative, not binary: a participant under cooldown may still win if its raw priority is high enough. The winner of a tick remains eligible on subsequent ticks; only its priority is dampened.
 
 **Rationale — step 2 (direct-address bias).** Gives a priority bias to a participant explicitly addressed in the most recent participant transmission on this channel. System events never displace it. Self-address is suppressed at TransmissionResponse validation (§4.5). The bias is multiplicative so the addressee's own priority signal is preserved: a reluctant addressee (low raw priority) receives a nudge, not a command, and an addressee that bids `0.0` or `want_to_send: false` is not dragged into the conversation. This is a bias, not a guarantee.
 
-> **Design note — why not a floor.** Earlier drafts of this specification used `priority = max(priority, 0.95)` here, applied after cooldown dampening. Field deployment showed this erases the addressee's own priority signal (any willing addressee jumps to 0.95 regardless of its raw bid) and, because the floor overrode dampening, produced persistent A→B→C→A address loops that cooldown could not break. The multiplicative form composes with step 1 — an addressed participant inside its cooldown window nets `× 0.6` — so directed threading is favoured without becoming self-sustaining.
+> **Design note — why not a floor.** Earlier drafts of this specification used `priority = max(priority, 0.95)` here, applied after cooldown dampening. Field deployment showed this erases the addressee's own priority signal (any willing addressee jumps to 0.95 regardless of its raw bid) and, because the floor overrode dampening, produced persistent A→B→C→A address loops that cooldown could not break. The multiplicative form composes with step 1 — an addressed participant inside its cooldown window nets `× (DAMPENING_FACTOR × ADDRESS_BIAS)`, `× 0.6` at reference values — so directed threading is favoured without becoming self-sustaining.
 
-**Ping-pong tradeoff.** When two participants consistently address each other, each receives the ×2.0 bias in alternation, which favours turn alternation between them over any third participant whose raw bids are similar. Because the bias composes with cooldown dampening and preserves raw-priority ordering, a third participant with a sufficiently strong bid can still break in. Deployments needing stronger fairness for bystanders may additionally cap consecutive directly-addressed wins at the application layer.
+**Ping-pong tradeoff.** When two participants consistently address each other, each receives the `ADDRESS_BIAS` multiplier in alternation, which favours turn alternation between them over any third participant whose raw bids are similar. Because the bias composes with cooldown dampening and preserves raw-priority ordering, a third participant with a sufficiently strong bid can still break in. Deployments needing stronger fairness for bystanders may lower `ADDRESS_BIAS`, or additionally cap consecutive directly-addressed wins at the application layer.
 
-A bid is eligible only when `want_to_send == true` and weighted `priority > 0.1`.
+A bid is eligible only when `want_to_send == true` and weighted `priority > ELIGIBILITY_THRESHOLD` (reference: 0.1).
 
 ### 4.4 Phase 4 — Winner Selection
 
 The Arbiter selects the winner from the weighted bid set:
 
 ```
-eligible   = [b for b in bids if b.want_to_send and b.priority > 0.1]
+eligible   = [b for b in bids if b.want_to_send and b.priority > ELIGIBILITY_THRESHOLD]
 if eligible is empty → no transmission this tick; advance to Phase 6
 
 top        = max(b.priority for b in eligible)
-contenders = [b for b in eligible if b.priority >= top - 0.05]
+contenders = [b for b in eligible if b.priority >= top - TIE_BAND]
 winner     = random.choice(contenders)
 ```
 
@@ -507,8 +515,8 @@ The table below contrasts LTAP's protocol-level mechanisms against the common de
 | **Selection Logic** | Deterministic & stochastic: participants submit numeric priority bids (0.0–1.0); the Arbiter applies a deterministic weighting pipeline then selects uniformly from a near-tie band. | LLM-based: a coordinator model reasons in natural language about who should speak next, based on conversation context and role descriptions. |
 | **Speaker Intent** | Native: each participant explicitly signals `want_to_send`, `priority`, and an `IntentTag` in Phase 2 Bid Collection — a structured, protocol-defined mechanism. | Simulated: frameworks lack a dedicated "I want to speak" signal; intent must be embedded in prompts or implemented as custom routing logic. |
 | **Concurrency** | Strictly serial per channel (Protocol Invariant 6): bids are collected in parallel, but transmission rights are granted to exactly one winner per tick. | Variable: default behaviour is serial, but LangGraph supports parallel node execution and AutoGen supports concurrent sub-chats ("swarm" patterns). |
-| **Backoff / Cooldown** | Automated: for the `COOLDOWN_TICKS` ticks after a win, the winner's bids are multiplicatively dampened (×0.3), preventing a participant from immediately dominating subsequent ticks without any coordinator intervention — while leaving it able to win when no one else contends. | Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions. |
-| **Direct Addressing** | Protocol-level: if the most recent `ParticipantTransmission` named a participant in `addressed_to`, that participant's bid priority is multiplied ×2.0 in the next weighting pass (§4.3). | Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework. |
+| **Backoff / Cooldown** | Automated: for the `COOLDOWN_TICKS` ticks after a win, the winner's bids are multiplicatively dampened (×`DAMPENING_FACTOR`, reference 0.3), preventing a participant from immediately dominating subsequent ticks without any coordinator intervention — while leaving it able to win when no one else contends. | Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions. |
+| **Direct Addressing** | Protocol-level: if the most recent `ParticipantTransmission` named a participant in `addressed_to`, that participant's bid priority is multiplied by `ADDRESS_BIAS` (reference ×2.0) in the next weighting pass (§4.3). | Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework. |
 
 ---
 
