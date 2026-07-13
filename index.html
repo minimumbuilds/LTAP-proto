@@ -405,8 +405,9 @@
         <li><a href="#observability">6. Observability</a></li>
         <li><a href="#invariants">7. Invariants</a></li>
         <li><a href="#out-of-scope">8. Out of Scope</a></li>
-        <li><a href="#limitations">10. Known Limitations</a></li>
         <li><a href="#comparison">9. Framework Comparison</a></li>
+        <li><a href="#limitations">10. Known Limitations</a></li>
+        <li><a href="#field-notes">11. Field Notes</a></li>
       </ul>
     </div>
   </nav>
@@ -418,6 +419,11 @@
       <div class="label">Request for Proposal — Protocol Specification</div>
       <h1>LLM Shared-Bus Turn Allocation Protocol</h1>
       <div class="subtitle">LTAP &nbsp;·&nbsp; Version 1.0 Draft</div>
+    </div>
+
+    <div class="callout-note">
+      <strong>Normative source.</strong> <code>README.md</code> in this repository is the normative protocol text; this page is a styled rendering of the same content. Where they disagree, the README governs.
+      <br><strong>Implementations:</strong> <a href="https://github.com/minimumbuilds/LTAP-SDK">LTAP-SDK</a> (reference implementation: Arbiter, participant base class, in-process transport, invariant + multi-tick scenario test suite) · <a href="https://github.com/minimumbuilds/LTAP-RP">LTAP-RP</a> (LTAP-over-Kafka transport binding and containerised multi-agent demo) · a private multi-agent room simulation (full application deployment; source of the §11 field notes).
     </div>
 
     <!-- §1 -->
@@ -434,7 +440,7 @@
         <strong>Cooperative assumption.</strong> LTAP assumes participants report priority honestly. The protocol provides no mechanism to detect or penalise a participant that always bids 1.0. Deployments involving adversarial or incentive-aware participants must implement application-layer mechanisms — reputation scoring, transmission budgets, quotas, or similar — outside the scope of this specification.
       </div>
       <div class="callout-note">
-        <strong>Consistency model.</strong> LTAP provides per-channel sequential consistency: within a channel, all state transitions are serialized through the Arbiter's tick cycle, and only protocol-compliant messages contribute to the channel log. Any out-of-schema or extraneous token generation — even if discarded locally — MUST be treated as a protocol violation, as it creates risk of hidden state divergence between participants. This is the foundational justification for strict output control at bid-generation time (§4.2) and explains why post-generation filtering does not satisfy the constrained decoding requirement.
+        <strong>Consistency model.</strong> LTAP provides per-channel sequential consistency: within a channel, all state transitions are serialized through the Arbiter's tick cycle, and only protocol-compliant messages contribute to the channel log. Any out-of-schema or extraneous token generation — even if discarded locally — creates risk of hidden state divergence between participants and MUST be either prevented at generation time or provably contained at the client layer; the two participant conformance tiers in §4.2 define what each posture requires. This is the foundational justification for strict output control at bid-generation time and explains why free generation followed by post-hoc filtering satisfies neither tier.
       </div>
       <div class="arch-diagram">
         <div class="arch-row">
@@ -483,7 +489,7 @@
             <tr><td><code>Bus Event</code></td><td>A structured message broadcast by the Arbiter after each tick, carrying a transmission or an infrastructure notification, scoped to the channel on which the event occurred.</td></tr>
             <tr><td><code>Cooldown</code></td><td>A per-participant, per-channel dampening window covering the <code>COOLDOWN_TICKS</code> ticks that follow a participant's transmission on that channel. Not a stored counter: the Arbiter derives it from <code>last_acted_tick</code> as <code>channel.tick − last_acted_tick ≤ COOLDOWN_TICKS</code> (§4.3). A participant that has never transmitted on the channel has no cooldown window.</td></tr>
             <tr><td><code>Direct address</code></td><td>A transmission explicitly directed at a named participant. Triggers a strong priority bias for that participant on every subsequent tick of the same channel until another <code>ParticipantTransmission</code> on that channel supersedes it as the most recent log entry.</td></tr>
-            <tr><td><code>Equivalent Mechanism</code></td><td>A generation-time constraint mechanism that satisfies the constrained decoding requirement (§4.2). An equivalent mechanism MUST guarantee: (1) zero emission of out-of-schema tokens; (2) bounded output strictly conforming to the Bid Schema (§3.3.1); and (3) no transient generation of discardable content — the model must not internally generate and then discard out-of-schema tokens, as this risks hidden state divergence even when only conforming output is emitted. Post-generation filtering or validation does not qualify.</td></tr>
+            <tr><td><code>Equivalent Mechanism</code></td><td>A generation-time constraint mechanism that satisfies the constrained decoding requirement (§4.2). An equivalent mechanism guarantees: (1) zero emission of out-of-schema tokens; (2) bounded output strictly conforming to the Bid Schema (§3.3.1); and (3) no transient generation of discardable content — the model must not internally generate and then discard out-of-schema tokens, as this risks hidden state divergence even when only conforming output is emitted. Tier S participants (§4.2) satisfy all three properties; Tier H participants satisfy (1)–(2) at generation time and contain (3) at the client layer. Post-generation filtering or validation alone does not qualify for either tier.</td></tr>
           </tbody>
         </table>
       </div>
@@ -595,13 +601,18 @@ Bus {
       <h3 id="dm-arbiter"><span class="sec-num">3.8</span> Arbiter</h3>
       <pre><code>Arbiter {
   bus:                        Bus
-  COOLDOWN_TICKS:             int     // dampened-bid count after transmitting; reference: 2
+  COOLDOWN_TICKS:             int     // dampened-bid window after transmitting; reference: 2
+  DAMPENING_FACTOR:           float   // cooldown multiplier, §4.3 step 1; range [0.0, 1.0]; reference: 0.3
+  ADDRESS_BIAS:               float   // direct-address multiplier, §4.3 step 2; range ≥ 0.0; reference: 2.0
+  ELIGIBILITY_THRESHOLD:      float   // weighted priority must exceed this to contend, §4.4; range [0.0, 1.0); reference: 0.1
+  TIE_BAND:                   float   // near-tie band width for winner selection, §4.4; range [0.0, 1.0]; reference: 0.05
   BID_TIMEOUT:                float   // seconds to wait for a bid response; reference: 5.0
   TRANSMISSION_TIMEOUT:       float   // seconds to wait for a TransmissionResponse; reference: 60.0
   MAX_CONSECUTIVE_FAILURES:   int     // failures before ineligibility; reference: 2
 }</code></pre>
+      <p>All weighting and selection constants are deployment-configurable parameters with the reference values above as defaults; the arithmetic in §4.3 and §4.4 is expressed in terms of these names.</p>
       <div class="callout-note">
-        <strong>Parameter floor values.</strong> <code>COOLDOWN_TICKS = 0</code> disables cooldown dampening: the window <code>0 &lt; channel.tick − last_acted_tick ≤ 0</code> is empty, so no bids are ever dampened. <code>MAX_CONSECUTIVE_FAILURES = 0</code> means every transmission failure immediately imposes ineligibility, since <code>failure_streak &gt;= 0</code> is always true. Both are valid configurations for their respective disabling or maximum-strictness effects. Negative values are not permitted.
+        <strong>Parameter floor values.</strong> <code>COOLDOWN_TICKS = 0</code> disables cooldown dampening: the window <code>0 &lt; channel.tick − last_acted_tick ≤ 0</code> is empty, so no bids are ever dampened. <code>DAMPENING_FACTOR = 1.0</code> also disables dampening (the multiplier is identity); <code>DAMPENING_FACTOR = 0.0</code> turns the cooldown window into a hard mute — the weighted priority becomes 0 and fails the eligibility threshold, reproducing a lockout model as configuration. <code>ADDRESS_BIAS = 1.0</code> disables the direct-address bias. <code>TIE_BAND = 0.0</code> restricts the contender set to exact ties. <code>MAX_CONSECUTIVE_FAILURES = 0</code> means every transmission failure immediately imposes ineligibility, since <code>failure_streak &gt;= 0</code> is always true. All are valid configurations for their respective disabling or maximum-strictness effects. Negative values are not permitted.
       </div>
       <div class="callout-warn">
         <strong>Cooldown window semantics.</strong> <code>COOLDOWN_TICKS = N</code> means the participant's bids are dampened on exactly the N ticks following a transmission. The window is derived at weighting time — <code>last_acted_tick ≠ null</code> and <code>channel.tick − last_acted_tick ≤ COOLDOWN_TICKS</code> — rather than maintained as a stored counter, so there is nothing to decrement and no offset to compensate for. (A <code>+1</code> offset applies only to <code>ineligible_ticks</code> (§4.5), because Phase 1 decrements it before the Phase 2 eligibility check.)
@@ -674,7 +685,7 @@ foreach channel in bus.channels:
           <div class="phase-card">
             <div class="phase-label">Phase 4 · Arbiter · deterministic</div>
             <div class="phase-title">Winner Selection</div>
-            <div class="phase-desc">Highest weighted priority wins. Stochastic tie-break within 0.05 band. At most one winner.</div>
+            <div class="phase-desc">Highest weighted priority wins. Stochastic tie-break within the <code>TIE_BAND</code> (reference 0.05). At most one winner.</div>
           </div>
         </div>
         <div class="phase-section-label" style="margin-top:.5rem">— execution phase —</div>
@@ -711,7 +722,13 @@ foreach channel in bus.channels:
       <h3 id="phase2"><span class="sec-num">4.2</span> Phase 2 — Bid Collection</h3>
       <p>The Arbiter collects bids from every <strong>eligible</strong> participant in parallel and waits up to <code>BID_TIMEOUT</code> seconds for each response. A participant is eligible for solicitation when <code>ineligible_ticks == 0</code>. Ineligible participants are not solicited and receive an implicit safe default for the tick.</p>
       <p><strong>Bundled vs. standalone BidRequests.</strong> When the preceding tick produced a transmission, the Arbiter MUST embed the BidRequest in the <code>bid_request</code> field of the BusEvent delivered in Phase 6 of that tick (§4.6), rather than sending a separate BidRequest message. The participant's bid response to the BusEvent is treated as its bid for the current tick; the <code>BID_TIMEOUT</code> window starts from when the BusEvent was sent. A standalone BidRequest is issued only when no BusEvent was sent in the preceding tick (i.e., the preceding tick produced no transmission), or for participants who joined at the preceding tick boundary and therefore did not receive that BusEvent.</p>
-      <p><strong>Constrained generation requirement.</strong> A conforming participant MUST invoke its underlying language model using the Bid Schema (§3.3.1) as a hard structural constraint — that is, via constrained decoding or a functionally equivalent generation-time constraint mechanism (see §2) that guarantees the model's output is valid against the schema before the Arbiter receives it. Post-generation validation does not satisfy this requirement. This requirement exists to: (1) prevent covert or unintended data transmission via bid fields, including <code>intent</code>; (2) eliminate discarded-token divergence — a model that internally generates and then discards out-of-schema tokens may produce hidden state that diverges across participants, even when only conforming output is emitted; and (3) minimize unnecessary token generation and its associated cost and latency.</p>
+      <p><strong>Constrained generation requirement.</strong> A conforming participant MUST produce its bid under a generation-time structural constraint against the Bid Schema (§3.3.1) — never by free generation followed by post-hoc validation or filtering. This requirement exists to: (1) prevent covert or unintended data transmission via bid fields, including <code>intent</code>; (2) eliminate discarded-token divergence — a model that internally generates and then discards out-of-schema tokens may produce hidden state that diverges across participants, even when only conforming output is emitted; and (3) minimize unnecessary token generation and its associated cost and latency.</p>
+      <p><strong>Participant conformance tiers.</strong> Not every deployment controls its inference stack deeply enough to guarantee all three properties of an Equivalent Mechanism (§2). Two tiers are defined; a deployment MUST declare which tier its participants meet.</p>
+      <ul>
+        <li><strong>Tier S (Strict).</strong> The participant satisfies the full Equivalent Mechanism definition, including property (3): no transient generation of discardable content. This requires constraint enforcement inside the decoding loop (logit-level grammar/FSM masking) and is generally available only with self-hosted inference. Tier S is REQUIRED for participants that share mutable context or reuse model state across calls, where transient generation materialises as hidden state divergence.</li>
+        <li><strong>Tier H (Hosted).</strong> The participant uses a provider- or runtime-supplied structured-output mechanism that guarantees properties (1) and (2) — zero out-of-schema <em>emission</em>, bounded schema-conforming output — but cannot attest to property (3) (e.g. hosted APIs and local model servers whose schema enforcement constrains the emitted message, not internal sampling; reasoning models that produce non-emitted thinking tokens). Tier H participants MUST additionally guarantee, at the client layer: any non-conforming or discarded model content (reasoning traces, stripped preambles) is never appended to any context, log, or history that influences a future bid or transmission of any participant. Under Tier H the divergence risk of property (3) is contained rather than eliminated: each call's context is rebuilt deterministically from protocol-visible state, so transient generation cannot accumulate into divergent hidden state.</li>
+      </ul>
+      <p>Post-generation validation alone — free generation plus a parse/filter step — satisfies neither tier.</p>
       <p>The Arbiter must not include any other participant's bid, private state, or bus events that the solicited participant did not receive as part of any application context accompanying the BidRequest.</p>
       <p>Each participant must respond with a JSON object conforming to:</p>
       <pre><code>{
@@ -742,28 +759,29 @@ foreach channel in bus.channels:
         <table>
           <thead><tr><th>Step</th><th>Operation</th><th>Condition</th></tr></thead>
           <tbody>
-            <tr><td><code>1</code></td><td><code>priority × 0.3</code></td><td><code>participant.last_acted_tick ≠ null</code> and <code>channel.tick − participant.last_acted_tick ≤ COOLDOWN_TICKS</code> (cooldown window)</td></tr>
-            <tr><td><code>2</code></td><td><code>priority × 2.0</code></td><td>Most recent <code>ParticipantTransmission</code> in <code>channel.log</code> has <code>addressed_to</code> == this participant</td></tr>
+            <tr><td><code>1</code></td><td><code>priority × DAMPENING_FACTOR</code></td><td><code>participant.last_acted_tick ≠ null</code> and <code>channel.tick − participant.last_acted_tick ≤ COOLDOWN_TICKS</code> (cooldown window)</td></tr>
+            <tr><td><code>2</code></td><td><code>priority × ADDRESS_BIAS</code></td><td>Most recent <code>ParticipantTransmission</code> in <code>channel.log</code> has <code>addressed_to</code> == this participant</td></tr>
             <tr><td><code>3</code></td><td><code>priority = clamp(priority, 0.0, 1.0)</code></td><td>Always; applied last</td></tr>
           </tbody>
         </table>
       </div>
+      <p>Reference values: <code>DAMPENING_FACTOR = 0.3</code>, <code>ADDRESS_BIAS = 2.0</code> (§3.8). Worked examples below use the reference values.</p>
       <p><strong>Rationale — step 1 (cooldown dampening).</strong> Prevents monopoly without hard-locking turns. Multiplicative, not binary: a participant under cooldown may still win if its raw priority is high enough. The winner of a tick remains eligible on subsequent ticks; only its priority is dampened.</p>
       <p><strong>Rationale — step 2 (direct-address bias).</strong> Gives a priority bias to a participant explicitly addressed in the most recent participant transmission on this channel. System events never displace it. Self-address is suppressed at TransmissionResponse validation (§4.5). The bias is multiplicative so the addressee's own priority signal is preserved: a reluctant addressee (low raw priority) receives a nudge, not a command, and an addressee that bids <code>0.0</code> or <code>want_to_send: false</code> is not dragged into the conversation. This is a bias, not a guarantee.</p>
       <div class="callout-note">
-        <strong>Design note — why not a floor.</strong> Earlier drafts of this specification used <code>priority = max(priority, 0.95)</code> here, applied after cooldown dampening. Field deployment showed this erases the addressee's own priority signal (any willing addressee jumps to 0.95 regardless of its raw bid) and, because the floor overrode dampening, produced persistent A→B→C→A address loops that cooldown could not break. The multiplicative form composes with step 1 — an addressed participant inside its cooldown window nets <code>× 0.6</code> — so directed threading is favoured without becoming self-sustaining.
+        <strong>Design note — why not a floor.</strong> Earlier drafts of this specification used <code>priority = max(priority, 0.95)</code> here, applied after cooldown dampening. Field deployment showed this erases the addressee's own priority signal (any willing addressee jumps to 0.95 regardless of its raw bid) and, because the floor overrode dampening, produced persistent A→B→C→A address loops that cooldown could not break. The multiplicative form composes with step 1 — an addressed participant inside its cooldown window nets <code>× (DAMPENING_FACTOR × ADDRESS_BIAS)</code>, <code>× 0.6</code> at reference values — so directed threading is favoured without becoming self-sustaining.
       </div>
       <div class="callout-warn">
-        <strong>Ping-pong tradeoff.</strong> When two participants consistently address each other, each receives the ×2.0 bias in alternation, which favours turn alternation between them over any third participant whose raw bids are similar. Because the bias composes with cooldown dampening and preserves raw-priority ordering, a third participant with a sufficiently strong bid can still break in. Deployments needing stronger fairness for bystanders may additionally cap consecutive directly-addressed wins at the application layer.
+        <strong>Ping-pong tradeoff.</strong> When two participants consistently address each other, each receives the <code>ADDRESS_BIAS</code> multiplier in alternation, which favours turn alternation between them over any third participant whose raw bids are similar. Because the bias composes with cooldown dampening and preserves raw-priority ordering, a third participant with a sufficiently strong bid can still break in. Deployments needing stronger fairness for bystanders may lower <code>ADDRESS_BIAS</code>, or additionally cap consecutive directly-addressed wins at the application layer.
       </div>
-      <p>A bid is eligible only when <code>want_to_send == true</code> and weighted <code>priority &gt; 0.1</code>.</p>
+      <p>A bid is eligible only when <code>want_to_send == true</code> and weighted <code>priority &gt; ELIGIBILITY_THRESHOLD</code> (reference: 0.1).</p>
 
       <h3 id="phase4"><span class="sec-num">4.4</span> Phase 4 — Winner Selection</h3>
-      <pre><code>eligible   = [b for b in bids if b.want_to_send and b.priority > 0.1]
+      <pre><code>eligible   = [b for b in bids if b.want_to_send and b.priority > ELIGIBILITY_THRESHOLD]
 if eligible is empty → no transmission this tick; advance to Phase 6
 
 top        = max(b.priority for b in eligible)
-contenders = [b for b in eligible if b.priority >= top - 0.05]
+contenders = [b for b in eligible if b.priority >= top - TIE_BAND]
 winner     = random.choice(contenders)</code></pre>
       <p><strong>At most one winner per tick.</strong> If no eligible bids exist, no transmission occurs. Otherwise exactly one winner is selected and signalled.</p>
       <p><strong>Randomness.</strong> The selection algorithm is implementation-defined. Replayable conformance (§6) requires logging the full contender set and <code>rng_state</code> captured <em>before</em> calling <code>random.choice</code>. No specific algorithm or seed strategy is mandated.</p>
@@ -907,9 +925,32 @@ winner     = random.choice(contenders)</code></pre>
         <li><span><strong>Membership changes at tick boundaries.</strong> External requests take effect only between ticks of the relevant channel. Multiple requests at the same boundary are processed in receipt order; removals before registrations.</span></li>
         <li><span><strong>Ineligible participants are not solicited.</strong> A participant with <code>ineligible_ticks &gt; 0</code> on a channel receives no BidRequest for that channel and cannot win a tick on that channel until ineligibility expires.</span></li>
         <li><span><strong>Channel independence.</strong> A participant's arbitration state (ineligible_ticks, failure_streak, last_acted_tick) on one channel has no effect on its state on any other channel. The Arbiter must not use a participant's status or history on channel A when making arbitration decisions on channel B.</span></li>
-        <li><span><strong>Bid generation uses constrained decoding.</strong> A conforming participant must produce bid responses via constrained decoding (or equivalent) against the Bid Schema (§3.3.1). The Arbiter retains its validation and substitution logic as defense-in-depth but must not rely on it as the primary correctness mechanism for structural bid validity.</span></li>
+        <li><span><strong>Bid generation uses constrained decoding.</strong> A conforming participant must produce bid responses under a generation-time constraint against the Bid Schema (§3.3.1), satisfying its deployment's declared conformance tier (§4.2). The Arbiter retains its validation and substitution logic as defense-in-depth but must not rely on it as the primary correctness mechanism for structural bid validity.</span></li>
         <li><span><strong>Bid non-expressiveness.</strong> Bid fields — including <code>intent</code> — MUST NOT be used to encode arbitrary payloads, hidden data, or inter-participant context leakage. Implementations MUST ensure bids remain non-expressive and bounded to their protocol-defined semantics. Bids are a control plane, not a data plane.</span></li>
       </ol>
+    </section>
+
+    <!-- §8 -->
+    <section id="out-of-scope">
+      <h2><span class="sec-num">§8</span> Out of Scope</h2>
+      <ul class="out-of-scope">
+        <li>Participant roles, domains, or behavioral parameters</li>
+        <li>Priority honesty enforcement; adversarial priority manipulation</li>
+        <li>How participants generate their bids or transmissions</li>
+        <li>Participant context management, memory, or history retention</li>
+        <li>Application context accompanying a BidRequest</li>
+        <li><code>intent_version</code> format, versioning scheme, or negotiation</li>
+        <li>Output content format, length, or post-processing</li>
+        <li>Maximum transmission content size (the outcome when a limit is exceeded is specified in §4.5; the limit value itself is implementation-defined)</li>
+        <li>Channel creation, destruction, naming, or access control</li>
+        <li>How participants discover available channels</li>
+        <li>Client-side deconfliction when a participant holds transmission rights on multiple channels simultaneously — this is an internal client concern</li>
+        <li>Bus topology and inter-channel participant addressing</li>
+        <li>Transport mechanism between participants and the Arbiter</li>
+        <li>Arbiter fault tolerance, redundancy, or recovery procedures — <strong>Note:</strong> the Arbiter is a single point of failure for all channels it manages. A conforming Arbiter redundancy or failover protocol is a v2 target; deployments requiring high availability must implement their own Arbiter-level fault tolerance outside this specification.</li>
+        <li>RNG algorithm, seed management, or reproducibility strategy</li>
+        <li>Policy for deregistering repeatedly timing-out or unreachable participants</li>
+      </ul>
     </section>
 
     <!-- §9 -->
@@ -943,40 +984,17 @@ winner     = random.choice(contenders)</code></pre>
             </tr>
             <tr>
               <td><strong>Backoff / Cooldown</strong></td>
-              <td>Automated: for the <code>COOLDOWN_TICKS</code> ticks after a win, the winner's bids are multiplicatively dampened (×0.3), preventing a participant from immediately dominating subsequent ticks without any coordinator intervention — while leaving it able to win when no one else contends.</td>
+              <td>Automated: for the <code>COOLDOWN_TICKS</code> ticks after a win, the winner's bids are multiplicatively dampened (×<code>DAMPENING_FACTOR</code>, reference 0.3), preventing a participant from immediately dominating subsequent ticks without any coordinator intervention — while leaving it able to win when no one else contends.</td>
               <td>Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions.</td>
             </tr>
             <tr>
               <td><strong>Direct Addressing</strong></td>
-              <td>Protocol-level: if the most recent <code>ParticipantTransmission</code> named a participant in <code>addressed_to</code>, that participant's bid priority is multiplied ×2.0 in the next weighting pass (§4.3).</td>
+              <td>Protocol-level: if the most recent <code>ParticipantTransmission</code> named a participant in <code>addressed_to</code>, that participant's bid priority is multiplied by <code>ADDRESS_BIAS</code> (reference ×2.0) in the next weighting pass (§4.3).</td>
               <td>Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework.</td>
             </tr>
           </tbody>
         </table>
       </div>
-    </section>
-
-    <!-- §8 -->
-    <section id="out-of-scope">
-      <h2><span class="sec-num">§8</span> Out of Scope</h2>
-      <ul class="out-of-scope">
-        <li>Participant roles, domains, or behavioral parameters</li>
-        <li>Priority honesty enforcement; adversarial priority manipulation</li>
-        <li>How participants generate their bids or transmissions</li>
-        <li>Participant context management, memory, or history retention</li>
-        <li>Application context accompanying a BidRequest</li>
-        <li><code>intent_version</code> format, versioning scheme, or negotiation</li>
-        <li>Output content format, length, or post-processing</li>
-        <li>Maximum transmission content size (the outcome when a limit is exceeded is specified in §4.5; the limit value itself is implementation-defined)</li>
-        <li>Channel creation, destruction, naming, or access control</li>
-        <li>How participants discover available channels</li>
-        <li>Client-side deconfliction when a participant holds transmission rights on multiple channels simultaneously — this is an internal client concern</li>
-        <li>Bus topology and inter-channel participant addressing</li>
-        <li>Transport mechanism between participants and the Arbiter</li>
-        <li>Arbiter fault tolerance, redundancy, or recovery procedures — <strong>Note:</strong> the Arbiter is a single point of failure for all channels it manages. A conforming Arbiter redundancy or failover protocol is a v2 target; deployments requiring high availability must implement their own Arbiter-level fault tolerance outside this specification.</li>
-        <li>RNG algorithm, seed management, or reproducibility strategy</li>
-        <li>Policy for deregistering repeatedly timing-out or unreachable participants</li>
-      </ul>
     </section>
 
     <!-- §10 -->
@@ -986,6 +1004,43 @@ winner     = random.choice(contenders)</code></pre>
         <strong>Priority dishonesty.</strong> LTAP v1.0 assumes participants report bid priority honestly (§1). A participant that always bids maximum priority (1.0) does not win every tick — cooldown dampening (§4.3) limits consecutive wins and stochastic tie-breaking (§4.4) introduces non-determinism among near-tied bids — but it does persistently inflate its selection probability at the expense of participants bidding honestly. The protocol provides no detection or penalty mechanism for this behaviour in the current version.
       </div>
       <p>Tuning controls to detect and mitigate priority inflation and other misbehaving-participant patterns are planned for a near release. These mechanisms are currently experimental and in development.</p>
+    </section>
+
+    <!-- §11 -->
+    <section id="field-notes">
+      <h2><span class="sec-num">§11</span> Field Notes — Deployment Experience</h2>
+      <p>This section records what running LTAP taught us that designing it did not. The deployments referenced are the reference SDK (in-process and Kafka transports) and a multi-agent room simulation in which LLM-backed personas converse and move between rooms, each room an LTAP channel. Normative changes motivated by these notes are already incorporated into the sections above; the notes preserve the evidence and the reasoning.</p>
+
+      <h3 id="fn-address-floor"><span class="sec-num">11.1</span> A hard direct-address floor creates self-sustaining address loops</h3>
+      <p><strong>Deployed:</strong> the original §4.3 step 2, <code>priority = max(priority, 0.95)</code>, applied after cooldown dampening.</p>
+      <p><strong>Observed:</strong> in rooms where agents habitually addressed one another, conversation collapsed into persistent A→B→C→A loops. The floor erased the addressee's own priority signal — any willing addressee jumped to 0.95 regardless of its raw bid — and, because it was applied after dampening, it overrode the one mechanism that could have broken the cycle. The application attempted a client-side fix (a soft multiplicative bump in its own bid shaping), which silently failed: the arbiter's floor re-applied on top of whatever the client submitted, and the floor was not configurable.</p>
+      <p><strong>Changed:</strong> §4.3 step 2 became multiplicative (<code>× ADDRESS_BIAS</code>), composing with dampening instead of overriding it, and the bias became a named §3.8 parameter. Two lessons generalise: <strong>a floor is a command, a multiplier is a nudge</strong> — floors erase the signal the protocol exists to collect; and <strong>an unconfigurable default defeats downstream evidence</strong> — the application knew the default was wrong and had no lever to act on it.</p>
+
+      <h3 id="fn-derived-cooldown"><span class="sec-num">11.2</span> Stored cooldown counters drift; derive the window instead</h3>
+      <p><strong>Deployed:</strong> three artifacts, three cooldown mechanisms — the spec described a stored, decremented <code>cooldown</code> counter with a <code>+1</code> phase-ordering offset; the reference SDK implemented a hard post-win lockout via <code>ineligible_ticks</code>; the application computed dampening from elapsed ticks after its own stored counter was found to never decrement, permanently dampening anyone who had ever spoken.</p>
+      <p><strong>Observed:</strong> each formulation had an independent bug or design drawback, and the divergence itself produced an emergent failure: with the SDK's lockout <em>and</em> the application's client-side dampening both active, winners were double-penalised — hard-locked for the window, then dampened again after it. Nobody designed that behaviour; it emerged from three codebases each patching the same concept locally.</p>
+      <p><strong>Changed:</strong> cooldown is now <em>derived</em> — <code>channel.tick − last_acted_tick ≤ COOLDOWN_TICKS</code> — from a field the Participant record already carried. No stored counter, nothing to decrement, no offset to compensate for, nothing to drift. The general lesson: <strong>when protocol state can be derived from an existing event timestamp, derive it.</strong> Every stored counter is a standing invitation for implementations to disagree about when it changes.</p>
+
+      <h3 id="fn-one-owner"><span class="sec-num">11.3</span> One owner per mechanic</h3>
+      <p><strong>Observed:</strong> both failures above share a root cause: the same conceptual mechanic implemented at two layers. Client-side address bump × arbiter-side floor; client-side dampening × arbiter-side lockout. Multiplicative pipelines make double application quietly catastrophic — two reference-value dampeners stack to ×0.09, which falls below the eligibility threshold and turns a soft cooldown into a post-win mute.</p>
+      <p><strong>Guidance:</strong> every weighting mechanic must have exactly one owner. Applications that shape bid priority client-side (which the protocol expressly permits — how a participant computes its priority is out of scope, §8) SHOULD disable the corresponding Arbiter parameter (<code>DAMPENING_FACTOR = 1.0</code>, <code>ADDRESS_BIAS = 1.0</code>) rather than tolerate stacking. The Arbiter's weighting pipeline is a <em>default</em> for participants that do no shaping of their own, not a mandatory second pass.</p>
+
+      <h3 id="fn-client-cooldown"><span class="sec-num">11.4</span> Client-side cooldown ownership is legitimate — and sometimes better</h3>
+      <p><strong>Observed:</strong> the room simulation's client-side cooldown is richer than the protocol's: it exempts leave-the-room bids (an agent that just spoke should still be able to walk out — dampening its exit vote trapped agents in talk-then-fail-to-leave loops) and keys off <em>speech</em>, not any transmission (an agent that just moved rooms shouldn't arrive conversationally dampened). The Arbiter cannot express either distinction: <code>intent</code> is advisory by design (§3.3), and <code>last_acted_tick</code> records any win.</p>
+      <p><strong>Guidance:</strong> applications whose intents carry action semantics should own cooldown shaping client-side and set <code>DAMPENING_FACTOR = 1.0</code>. This is the intended division of labour, not a workaround: the protocol arbitrates <em>contention</em>; what a turn is <em>for</em> is application knowledge.</p>
+
+      <h3 id="fn-two-model"><span class="sec-num">11.5</span> Two-model routing is the cost pattern for the bid phase</h3>
+      <p><strong>Observed:</strong> the bid phase costs one inference per eligible participant per tick — with full-context prefill, this dominates deployment cost long before output tokens matter. The room simulation routes bids to a small model and only the winner's generation to a large one; it also threshold-gates dynamic prompt content (drive state appears only past a threshold) so the prefix-cacheable portion of the bid prompt stays stable across quiet ticks.</p>
+      <p><strong>Guidance:</strong> deployments SHOULD route bid generation to a smaller model than transmission generation, and SHOULD structure bid prompts for prefix-cache stability. The bid is a ~20-token structured emission under constrained decoding (§4.2); it rarely needs the transmission model's capability. Reducing solicitation itself (standing bids, event-driven re-bidding) is a candidate for a future protocol revision.</p>
+
+      <h3 id="fn-observability"><span class="sec-num">11.6</span> Observability earned its cost</h3>
+      <p><strong>Observed:</strong> every failure mode in this section was diagnosed from the §6 tick records — the address loops from consecutive <code>won</code> streaks with the floor visible in <code>weighted_priority</code>, the double-dampening from <code>weighted_priority</code> collapsing to ×0.09 of <code>raw_priority</code>, the never-decrementing counter from a participant whose dampening never expired. None required adding instrumentation after the fact.</p>
+      <p><strong>Guidance:</strong> implement Base conformance from day one. The per-participant-per-tick record (<code>raw_priority</code>, <code>weighted_priority</code>, <code>won</code>, <code>ineligible</code>) is the protocol's flight recorder; the failure-mode table in §6 was written from hypothetical failures, and deployment confirmed the signals detect real composite ones too.</p>
+
+      <h3 id="fn-tiers"><span class="sec-num">11.7</span> The strict constrained-decoding MUST was unsatisfiable in practice</h3>
+      <p><strong>Deployed:</strong> the original §4.2 requirement — every participant MUST use an Equivalent Mechanism, including property (3), no transient generation of discardable content.</p>
+      <p><strong>Observed:</strong> none of the deployments could meet it. Participants ran on hosted-style APIs and local model servers whose structured-output modes constrain the <em>emitted</em> message, not internal sampling, and reasoning-capable models generate non-emitted thinking tokens by design — one deployment stripped <code>&lt;think&gt;</code> blocks post-generation, precisely the pattern the requirement forbade. The practical effect of an unmeetable MUST was not stricter implementations; it was that the requirement was ignored wholesale, taking its meetable parts (schema-constrained emission) down with it.</p>
+      <p><strong>Changed:</strong> §4.2 now defines two participant conformance tiers. Tier S preserves the full guarantee for deployments that control their decoding loop and genuinely share model state; Tier H makes the achievable discipline normative for API-backed participants — schema-constrained emission plus a client-layer guarantee that discarded content never enters any context that influences future protocol behaviour. The general lesson: <strong>a requirement nobody can meet protects nothing</strong> — tier it to what each deployment class can attest, and make the attestation explicit.</p>
     </section>
 
   </main>
