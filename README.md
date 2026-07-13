@@ -548,3 +548,49 @@ The table below contrasts LTAP's protocol-level mechanisms against the common de
 **Priority dishonesty.** LTAP v1.0 assumes participants report bid priority honestly (§1). A participant that always bids maximum priority (1.0) does not win every tick — cooldown dampening (§4.3) limits consecutive wins and stochastic tie-breaking (§4.4) introduces non-determinism among near-tied bids — but it does persistently inflate its selection probability at the expense of participants bidding honestly. The protocol provides no detection or penalty mechanism for this behaviour in the current version.
 
 Tuning controls to detect and mitigate priority inflation and other misbehaving-participant patterns are planned for a near release. These mechanisms are currently experimental and in development.
+
+---
+
+## 11. Field Notes — Deployment Experience
+
+This section records what running LTAP taught us that designing it did not. The deployments referenced are the reference SDK (in-process and Kafka transports) and a multi-agent room simulation in which LLM-backed personas converse and move between rooms, each room an LTAP channel. Normative changes motivated by these notes are already incorporated into the sections above; the notes preserve the evidence and the reasoning.
+
+### 11.1 A hard direct-address floor creates self-sustaining address loops
+
+**Deployed:** the original §4.3 step 2, `priority = max(priority, 0.95)`, applied after cooldown dampening.
+
+**Observed:** in rooms where agents habitually addressed one another, conversation collapsed into persistent A→B→C→A loops. The floor erased the addressee's own priority signal — any willing addressee jumped to 0.95 regardless of its raw bid — and, because it was applied after dampening, it overrode the one mechanism that could have broken the cycle. The application attempted a client-side fix (a soft multiplicative bump in its own bid shaping), which silently failed: the arbiter's floor re-applied on top of whatever the client submitted, and the floor was not configurable.
+
+**Changed:** §4.3 step 2 became multiplicative (`× ADDRESS_BIAS`), composing with dampening instead of overriding it, and the bias became a named §3.8 parameter. Two lessons generalise: **a floor is a command, a multiplier is a nudge** — floors erase the signal the protocol exists to collect; and **an unconfigurable default defeats downstream evidence** — the application knew the default was wrong and had no lever to act on it.
+
+### 11.2 Stored cooldown counters drift; derive the window instead
+
+**Deployed:** three artifacts, three cooldown mechanisms — the spec described a stored, decremented `cooldown` counter with a `+1` phase-ordering offset; the reference SDK implemented a hard post-win lockout via `ineligible_ticks`; the application computed dampening from elapsed ticks after its own stored counter was found to never decrement, permanently dampening anyone who had ever spoken.
+
+**Observed:** each formulation had an independent bug or design drawback, and the divergence itself produced an emergent failure: with the SDK's lockout *and* the application's client-side dampening both active, winners were double-penalised — hard-locked for the window, then dampened again after it. Nobody designed that behaviour; it emerged from three codebases each patching the same concept locally.
+
+**Changed:** cooldown is now *derived* — `channel.tick − last_acted_tick ≤ COOLDOWN_TICKS` — from a field the Participant record already carried. No stored counter, nothing to decrement, no offset to compensate for, nothing to drift. The general lesson: **when protocol state can be derived from an existing event timestamp, derive it.** Every stored counter is a standing invitation for implementations to disagree about when it changes.
+
+### 11.3 One owner per mechanic
+
+**Observed:** both failures above share a root cause: the same conceptual mechanic implemented at two layers. Client-side address bump × arbiter-side floor; client-side dampening × arbiter-side lockout. Multiplicative pipelines make double application quietly catastrophic — two reference-value dampeners stack to ×0.09, which falls below the eligibility threshold and turns a soft cooldown into a post-win mute.
+
+**Guidance:** every weighting mechanic must have exactly one owner. Applications that shape bid priority client-side (which the protocol expressly permits — how a participant computes its priority is out of scope, §8) SHOULD disable the corresponding Arbiter parameter (`DAMPENING_FACTOR = 1.0`, `ADDRESS_BIAS = 1.0`) rather than tolerate stacking. The Arbiter's weighting pipeline is a *default* for participants that do no shaping of their own, not a mandatory second pass.
+
+### 11.4 Client-side cooldown ownership is legitimate — and sometimes better
+
+**Observed:** the room simulation's client-side cooldown is richer than the protocol's: it exempts leave-the-room bids (an agent that just spoke should still be able to walk out — dampening its exit vote trapped agents in talk-then-fail-to-leave loops) and keys off *speech*, not any transmission (an agent that just moved rooms shouldn't arrive conversationally dampened). The Arbiter cannot express either distinction: `intent` is advisory by design (§3.3), and `last_acted_tick` records any win.
+
+**Guidance:** applications whose intents carry action semantics should own cooldown shaping client-side and set `DAMPENING_FACTOR = 1.0`. This is the intended division of labour, not a workaround: the protocol arbitrates *contention*; what a turn is *for* is application knowledge.
+
+### 11.5 Two-model routing is the cost pattern for the bid phase
+
+**Observed:** the bid phase costs one inference per eligible participant per tick — with full-context prefill, this dominates deployment cost long before output tokens matter. The room simulation routes bids to a small model and only the winner's generation to a large one; it also threshold-gates dynamic prompt content (drive state appears only past a threshold) so the prefix-cacheable portion of the bid prompt stays stable across quiet ticks.
+
+**Guidance:** deployments SHOULD route bid generation to a smaller model than transmission generation, and SHOULD structure bid prompts for prefix-cache stability. The bid is a ~20-token structured emission under constrained decoding (§4.2); it rarely needs the transmission model's capability. Reducing solicitation itself (standing bids, event-driven re-bidding) is a candidate for a future protocol revision.
+
+### 11.6 Observability earned its cost
+
+**Observed:** every failure mode in this section was diagnosed from the §6 tick records — the address loops from consecutive `won` streaks with the floor visible in `weighted_priority`, the double-dampening from `weighted_priority` collapsing to ×0.09 of `raw_priority`, the never-decrementing counter from a participant whose dampening never expired. None required adding instrumentation after the fact.
+
+**Guidance:** implement Base conformance from day one. The per-participant-per-tick record (`raw_priority`, `weighted_priority`, `won`, `ineligible`) is the protocol's flight recorder; the failure-mode table in §6 was written from hypothetical failures, and deployment confirmed the signals detect real composite ones too.
