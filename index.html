@@ -405,8 +405,8 @@
         <li><a href="#observability">6. Observability</a></li>
         <li><a href="#invariants">7. Invariants</a></li>
         <li><a href="#out-of-scope">8. Out of Scope</a></li>
-        <li><a href="#limitations">10. Known Limitations</a></li>
         <li><a href="#comparison">9. Framework Comparison</a></li>
+        <li><a href="#limitations">10. Known Limitations</a></li>
       </ul>
     </div>
   </nav>
@@ -918,6 +918,29 @@ winner     = random.choice(contenders)</code></pre>
       </ol>
     </section>
 
+    <!-- §8 -->
+    <section id="out-of-scope">
+      <h2><span class="sec-num">§8</span> Out of Scope</h2>
+      <ul class="out-of-scope">
+        <li>Participant roles, domains, or behavioral parameters</li>
+        <li>Priority honesty enforcement; adversarial priority manipulation</li>
+        <li>How participants generate their bids or transmissions</li>
+        <li>Participant context management, memory, or history retention</li>
+        <li>Application context accompanying a BidRequest</li>
+        <li><code>intent_version</code> format, versioning scheme, or negotiation</li>
+        <li>Output content format, length, or post-processing</li>
+        <li>Maximum transmission content size (the outcome when a limit is exceeded is specified in §4.5; the limit value itself is implementation-defined)</li>
+        <li>Channel creation, destruction, naming, or access control</li>
+        <li>How participants discover available channels</li>
+        <li>Client-side deconfliction when a participant holds transmission rights on multiple channels simultaneously — this is an internal client concern</li>
+        <li>Bus topology and inter-channel participant addressing</li>
+        <li>Transport mechanism between participants and the Arbiter</li>
+        <li>Arbiter fault tolerance, redundancy, or recovery procedures — <strong>Note:</strong> the Arbiter is a single point of failure for all channels it manages. A conforming Arbiter redundancy or failover protocol is a v2 target; deployments requiring high availability must implement their own Arbiter-level fault tolerance outside this specification.</li>
+        <li>RNG algorithm, seed management, or reproducibility strategy</li>
+        <li>Policy for deregistering repeatedly timing-out or unreachable participants</li>
+      </ul>
+    </section>
+
     <!-- §9 -->
     <section id="comparison">
       <h2><span class="sec-num">§9</span> Framework Comparison</h2>
@@ -960,29 +983,6 @@ winner     = random.choice(contenders)</code></pre>
           </tbody>
         </table>
       </div>
-    </section>
-
-    <!-- §8 -->
-    <section id="out-of-scope">
-      <h2><span class="sec-num">§8</span> Out of Scope</h2>
-      <ul class="out-of-scope">
-        <li>Participant roles, domains, or behavioral parameters</li>
-        <li>Priority honesty enforcement; adversarial priority manipulation</li>
-        <li>How participants generate their bids or transmissions</li>
-        <li>Participant context management, memory, or history retention</li>
-        <li>Application context accompanying a BidRequest</li>
-        <li><code>intent_version</code> format, versioning scheme, or negotiation</li>
-        <li>Output content format, length, or post-processing</li>
-        <li>Maximum transmission content size (the outcome when a limit is exceeded is specified in §4.5; the limit value itself is implementation-defined)</li>
-        <li>Channel creation, destruction, naming, or access control</li>
-        <li>How participants discover available channels</li>
-        <li>Client-side deconfliction when a participant holds transmission rights on multiple channels simultaneously — this is an internal client concern</li>
-        <li>Bus topology and inter-channel participant addressing</li>
-        <li>Transport mechanism between participants and the Arbiter</li>
-        <li>Arbiter fault tolerance, redundancy, or recovery procedures — <strong>Note:</strong> the Arbiter is a single point of failure for all channels it manages. A conforming Arbiter redundancy or failover protocol is a v2 target; deployments requiring high availability must implement their own Arbiter-level fault tolerance outside this specification.</li>
-        <li>RNG algorithm, seed management, or reproducibility strategy</li>
-        <li>Policy for deregistering repeatedly timing-out or unreachable participants</li>
-      </ul>
     </section>
 
     <!-- §10 -->
