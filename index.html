@@ -956,13 +956,15 @@ winner     = random.choice(contenders)</code></pre>
     <!-- §9 -->
     <section id="comparison">
       <h2><span class="sec-num">§9</span> Framework Comparison</h2>
-      <p>The table below contrasts LTAP's protocol-level mechanisms against the common default patterns in AutoGen, CrewAI, and LangGraph. The right column describes typical configurations; all three frameworks are extensible and can approximate some of these behaviours through custom code.</p>
+      <p>The table below contrasts LTAP's protocol-level mechanisms against Murder Mystery Agents (MMA) — the closest published precedent for bid-based speaker self-selection among LLM agents — and against the common default patterns in AutoGen, CrewAI, and LangGraph. The MMA column describes the mechanism as published; the right column describes typical framework configurations, and all three frameworks are extensible and can approximate some of these behaviours through custom code.</p>
+      <p>MMA (Nonomura &amp; Mori, <em>Who Speaks Next? Multi-party AI Discussion Leveraging the Systematics of Turn-taking in Murder Mystery Games</em>, <a href="https://arxiv.org/abs/2412.04937">arXiv:2412.04937</a>, December 2024) predates LTAP. Each agent's <code>think()</code> step emits a speak/listen decision and an integer importance (0–9); a program, not an LLM, selects the highest. LTAP shares that core and differs in what it adds around it: parallel bounded solicitation, constrained non-expressive bids, declared rather than inferred addressing, multiplicative rather than override biasing, cooldown, silence as a legal outcome, and channel/observability semantics.</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Feature</th>
               <th>LTAP Protocol</th>
+              <th>Murder Mystery Agents (MMA)</th>
               <th>AutoGen / CrewAI / LangGraph</th>
             </tr>
           </thead>
@@ -970,27 +972,38 @@ winner     = random.choice(contenders)</code></pre>
             <tr>
               <td><strong>Selection Logic</strong></td>
               <td>Deterministic &amp; stochastic: participants submit numeric priority bids (0.0–1.0); the Arbiter applies a deterministic weighting pipeline then selects uniformly from a near-tie band.</td>
+              <td>Programmatic: each agent's <code>think()</code> emits <code>speak</code>/<code>listen</code> and an integer importance (0–9); a non-LLM function picks the highest, ties broken at random. No weighting pipeline — raw maximum.</td>
               <td>LLM-based: a coordinator model reasons in natural language about who should speak next, based on conversation context and role descriptions.</td>
             </tr>
             <tr>
               <td><strong>Speaker Intent</strong></td>
               <td>Native: each participant explicitly signals <code>want_to_send</code>, <code>priority</code>, and an <code>IntentTag</code> in Phase 2 Bid Collection — a structured, protocol-defined mechanism.</td>
+              <td>Native: <code>action</code> and <code>importance</code> are explicit per-agent outputs — but emitted alongside a free-text <code>thought</code> in a single unconstrained generation, and that thought is retained in the agent's own short-term memory. This is the free-generation-then-parse pattern §4.2 excludes.</td>
               <td>Simulated: frameworks lack a dedicated "I want to speak" signal; intent must be embedded in prompts or implemented as custom routing logic.</td>
             </tr>
             <tr>
               <td><strong>Concurrency</strong></td>
               <td>Strictly serial per channel (Protocol Invariant 6): bids are collected in parallel, but transmission rights are granted to exactly one winner per tick.</td>
+              <td>Serial: <code>think()</code> runs sequentially across agents each turn; exactly one speaker per turn.</td>
               <td>Variable: default behaviour is serial, but LangGraph supports parallel node execution and AutoGen supports concurrent sub-chats ("swarm" patterns).</td>
             </tr>
             <tr>
               <td><strong>Backoff / Cooldown</strong></td>
               <td>Automated: for the <code>COOLDOWN_TICKS</code> ticks after a win, the winner's bids are multiplicatively dampened (×<code>DAMPENING_FACTOR</code>, reference 0.3), preventing a participant from immediately dominating subsequent ticks without any coordinator intervention — while leaving it able to win when no one else contends.</td>
+              <td>None: nothing dampens a repeat speaker; the same agent may win consecutive turns on raw importance alone.</td>
               <td>Manual: no built-in cooldown mechanism; preventing consecutive wins requires explicit prompt engineering (e.g. "do not speak twice in a row") or custom routing functions.</td>
             </tr>
             <tr>
               <td><strong>Direct Addressing</strong></td>
-              <td>Protocol-level: if the most recent <code>ParticipantTransmission</code> named a participant in <code>addressed_to</code>, that participant's bid priority is multiplied by <code>ADDRESS_BIAS</code> (reference ×2.0) in the next weighting pass (§4.3).</td>
+              <td>Protocol-level: if the most recent <code>ParticipantTransmission</code> named a participant in <code>addressed_to</code>, that participant's bid priority is multiplied by <code>ADDRESS_BIAS</code> (reference ×2.0) in the next weighting pass (§4.3). The addressee is declared by the speaker as a structured field; the Arbiter never infers it from content.</td>
+              <td>Inferred and mandatory: a separate LLM call (<code>detectDesignation()</code>) reads the utterance for an adjacency-pair first part and its addressee; the detected addressee is obligated to speak next, overriding self-selection. Equivalent to the hard floor LTAP removed after field deployment (§11.1).</td>
               <td>Contextual: agents may reply when they see their name in conversation text, but this depends on LLM inference — there is no arithmetic priority boost enforced by the framework.</td>
+            </tr>
+            <tr>
+              <td><strong>No-one Wants to Speak</strong></td>
+              <td>Silence: a tick with no eligible bid produces no transmission (§4.4). Abstention is a legal, first-class outcome.</td>
+              <td>Floor retention: when every agent selects <code>listen</code>, the previous speaker speaks again — the conversation-analysis rule that an unselected next turn returns to the current speaker.</td>
+              <td>Coordinator always selects someone; a turn with no speaker is not a native outcome.</td>
             </tr>
           </tbody>
         </table>
